@@ -32,6 +32,7 @@ const API_PREFIXES = [
   '/handoff',
   '/fulfill',
   '/setup',
+  '/scim/',
   '/health',
 ]
 

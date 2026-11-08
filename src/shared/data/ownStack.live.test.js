@@ -840,6 +840,33 @@ describe('what an OIDC provider has to vouch for', () => {
     expect((await exchange({ ...user, email_verified: true })).ok).toBe(true)
   })
 
+  it('reads groups from userinfo and from the ID token, as Entra sends them', async () => {
+    const payload = Buffer.from(JSON.stringify({ groups: ['b1e2-guid', 'EHS-Admins'] })).toString(
+      'base64url'
+    )
+    const out = await identityFromCode({
+      tokenEndpoint: 'https://idp.test/token',
+      userinfoEndpoint: 'https://idp.test/userinfo',
+      clientId: 'c',
+      code: 'x',
+      redirectUri: 'https://ehs.test/auth/callback',
+      verifier: 'v',
+      fetchImpl: async (url) => ({
+        ok: true,
+        json: async () =>
+          String(url).endsWith('/token')
+            ? { access_token: 'at', id_token: `e30.${payload}.sig` }
+            : {
+                sub: 'u1',
+                email: 'a@b.test',
+                email_verified: true,
+                groups: ['EHS-Admins', 'Okta-Group'],
+              },
+      }),
+    })
+    expect(out.groups.sort()).toEqual(['EHS-Admins', 'Okta-Group', 'b1e2-guid'])
+  })
+
   it('follows no redirect from the provider', async () => {
     calls.length = 0
     await exchange({ sub: 'u1', email: 'a@b.test', email_verified: true })

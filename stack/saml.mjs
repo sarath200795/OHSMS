@@ -73,6 +73,7 @@ export async function identityFromSaml(client, samlResponse) {
     name: String(
       first(profile, NAME_CLAIMS) || [given, family].filter(Boolean).join(' ') || email || sub
     ),
+    groups: all(profile, GROUP_CLAIMS),
   }
 }
 
@@ -89,6 +90,14 @@ const CLAIM = {
   givenName: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
   surname: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
 }
+// Group names (Okta, Google, Keycloak: whatever the admin named the
+// attribute, usually "groups"), or group object IDs (Entra's claim URI).
+const GROUP_CLAIMS = [
+  'groups',
+  'memberOf',
+  'http://schemas.microsoft.com/ws/2008/06/identity/claims/groups',
+  'http://schemas.xmlsoap.org/claims/Group',
+]
 const EMAIL_CLAIMS = ['email', 'mail', 'emailAddress', CLAIM.email]
 const NAME_CLAIMS = ['displayName', CLAIM.displayName]
 
@@ -99,4 +108,16 @@ function first(profile, names) {
     if (typeof one === 'string' && one.trim()) return one.trim()
   }
   return ''
+}
+
+/** Every value of every named attribute, as distinct strings (at most 200). */
+function all(profile, names) {
+  const out = new Set()
+  for (const n of names) {
+    const v = profile?.[n] ?? profile?.attributes?.[n]
+    for (const one of Array.isArray(v) ? v : v == null ? [] : [v]) {
+      if (typeof one === 'string' && one.trim() && one.length <= 256) out.add(one.trim())
+    }
+  }
+  return [...out].slice(0, 200)
 }

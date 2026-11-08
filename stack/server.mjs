@@ -12,6 +12,14 @@ import { authorizeUrl, endpointsFor, identityFromCode } from './oidc.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
 import { authnRequestId, samlClient, identityFromSaml } from './saml.mjs'
 import { establishIdentity } from './identity.mjs'
+import {
+  createScimToken,
+  getGroupRoles,
+  handleScim,
+  revokeScimToken,
+  scimStatus,
+  setGroupRoles,
+} from './directory.mjs'
 import { getAutoJoin, inviteMember, listInvites, revokeInvite, setAutoJoin } from './invites.mjs'
 import {
   stampIdentity,
@@ -81,6 +89,22 @@ async function readBody(req) {
   } catch {
     return { __raw: raw }
   }
+}
+
+// What a refused sign-in says. A disabled account is told so, rather than
+// being told it has none, which would send them asking for an invite.
+function refusedSignIn(reason) {
+  return reason === 'disabled'
+    ? {
+        code: 'permission-denied',
+        reason,
+        message: 'your account on this organization is disabled',
+      }
+    : {
+        code: 'permission-denied',
+        reason: 'no-account',
+        message: 'no account on this organization',
+      }
 }
 
 function sessionOf(req, secret) {
@@ -213,6 +237,46 @@ export function createOwnStackServer({
       }
       if (demoIssuer && req.method === 'GET' && url.pathname === '/oidc/userinfo') {
         onUserinfo(req, res)
+        return
+      }
+      // SCIM 2.0: the company's directory adding, changing and deactivating
+      // people (directory.mjs). Its own bearer token; no session.
+      if (url.pathname.startsWith('/scim/v2/')) {
+        let body = {}
+        if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+          body = await readBody(req)
+          if (body.__raw !== undefined) {
+            send(
+              res,
+              400,
+              { status: '400', detail: 'The body must be JSON.' },
+              {
+                'Content-Type': 'application/scim+json',
+              }
+            )
+            return
+          }
+        }
+        const out = await handleScim({
+          engine,
+          db,
+          origin,
+          method: req.method,
+          pathname: url.pathname,
+          query: url.searchParams,
+          headers: req.headers,
+          body,
+        })
+        if (out.status === 204) {
+          res.writeHead(204, { 'Cache-Control': 'no-store' })
+          res.end()
+          return
+        }
+        res.writeHead(out.status, {
+          'Content-Type': 'application/scim+json',
+          'Cache-Control': 'no-store',
+        })
+        res.end(JSON.stringify(out.json))
         return
       }
       if (req.method === 'GET' && url.pathname === '/setup') {
@@ -469,12 +533,7 @@ export function createOwnStackServer({
     }
     const established = await establishIdentity(engine, db, identity)
     if (!established.ok) {
-      send(
-        res,
-        403,
-        { code: 'permission-denied', message: 'no account on this organization' },
-        clear
-      )
+      send(res, 403, refusedSignIn(established.reason), clear)
       return
     }
     const token = signSession(sessionSecret, { sub: established.uid })
@@ -512,12 +571,7 @@ export function createOwnStackServer({
     }
     const established = await establishIdentity(engine, db, identity)
     if (!established.ok) {
-      send(
-        res,
-        403,
-        { code: 'permission-denied', message: 'no account on this organization' },
-        clear
-      )
+      send(res, 403, refusedSignIn(established.reason), clear)
       return
     }
     const token = signSession(sessionSecret, { sub: established.uid })
@@ -539,7 +593,7 @@ export function createOwnStackServer({
     }
     const established = await establishIdentity(engine, db, identity)
     if (!established.ok) {
-      send(res, 403, { code: 'permission-denied', message: 'no account on this organization' })
+      send(res, 403, refusedSignIn(established.reason))
       return
     }
     send(res, 200, { token: signSession(sessionSecret, { sub: established.uid }) })
@@ -605,6 +659,11 @@ export function createOwnStackServer({
       revokeInvite: () => revokeInvite(engine, db, { uid, email: body.email }),
       getAutoJoin: () => getAutoJoin(engine, db, { uid }),
       setAutoJoin: () => setAutoJoin(engine, db, { uid, domains: body.domains, role: body.role }),
+      getGroupRoles: () => getGroupRoles(engine, db, { uid }),
+      setGroupRoles: () => setGroupRoles(engine, db, { uid, rules: body.rules }),
+      scimStatus: () => scimStatus(engine, db, { uid }),
+      createScimToken: () => createScimToken(engine, db, { uid }),
+      revokeScimToken: () => revokeScimToken(engine, db, { uid }),
     }
     const fn = table[name]
     if (!fn) {

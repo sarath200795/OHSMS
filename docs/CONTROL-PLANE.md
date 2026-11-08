@@ -338,13 +338,28 @@ unchanged across deploys.
   app's tile in Okta or "My Apps" is refused. Point the tile at
   `https://ehs.example.com/auth/start` instead: the Sign-on URL in Entra, a
   bookmark app in Okta. `/setup` shows the address. The same works for OIDC.
-- **Who joins.** The IdP decides who can sign in; WEEHS decides who belongs.
-  Either an admin invites each person (Employees → Invite employee), or, for
-  a company whose IdP already holds everyone, turns on **Join automatically**
-  in the same dialog: anyone the IdP signs in with an address at the listed
-  domains joins with the chosen role, never as admin. Roles are not taken
-  from IdP groups yet, and leaving the IdP does not remove the WEEHS account
-  (it can no longer sign in); remove it from Employees.
+- **Who joins, and as what.** The IdP decides who can sign in; WEEHS decides
+  who belongs. In Employees → Invite employee, an admin can:
+  - invite people one by one;
+  - **Join automatically**: anyone with an address at the listed domains
+    joins with one role (never admin);
+  - map **identity provider groups to roles** (`EHS-Admins` → Administrator,
+    `Safety-Managers` → Manager): applied at every sign-in, so a change in
+    the IdP shows at the person's next sign-in, and anyone in a mapped group
+    joins without an invite. The most capable mapped role wins; no mapped
+    group sent leaves the role as it is; a sign-in never moves the last
+    administrator. Groups are read from a SAML `groups` or `memberOf`
+    attribute or Entra's groups claim, and from OIDC `groups` in userinfo or
+    the ID token. Entra sends group object IDs unless configured otherwise:
+    map those IDs.
+- **SCIM sync, and leaving.** **Turn on sync** in the same dialog gives a
+  SCIM 2.0 base URL (`https://ehs.example.com/scim/v2`) and a bearer token,
+  shown once, to enter in Okta, Entra or Google as the app's provisioning.
+  Assigning someone the app there invites them here; deactivating or
+  removing them disables their account at once (an open session stops at its
+  next request), and keeps them out even if their domain or a group would
+  let them join. Reactivating lets them in again. Users only: groups reach
+  WEEHS through sign-in, as above.
 - **SAML email.** Read from an attribute named `email`, `mail` or
   `emailAddress`, or the standard claim
   `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress`

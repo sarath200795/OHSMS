@@ -792,3 +792,164 @@ describe('enterprise identity providers', () => {
     await app.stop()
   })
 })
+
+// ── The company's directory: groups, deactivation, SCIM ─────────────────────
+describe('following the company directory', () => {
+  const withGroups = (email, groups) => ({ attributes: { email, displayName: email, groups } })
+
+  it('takes roles from IdP groups at every sign-in, and never removes the last admin', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    const rules = [
+      { group: 'EHS-Managers', role: 'manager' },
+      { group: 'EHS-Admins', role: 'admin' },
+    ]
+    expect((await rpc(founder, 'setGroupRoles', { rules })).body).toMatchObject({ ok: true, rules })
+    expect(
+      (await rpc(founder, 'setGroupRoles', { rules: [{ group: '', role: 'member' }] })).body
+    ).toMatchObject({
+      ok: false,
+      reason: 'rules',
+    })
+
+    // In a mapped group: joins without an invite, with that group's role.
+    const gita = (groups) =>
+      signIn(app.origin, keys, 'gita@northwind.test', withGroups('gita@northwind.test', groups))
+    let g = await gita(['Everyone', 'EHS-Managers'])
+    expect(g.status).toBe(302)
+    expect((await read(g.session, 'users', 'gita@northwind.test')).doc).toMatchObject({
+      role: 'manager',
+      joinedBy: 'groups',
+    })
+    // Not a member, so not an admin either: she cannot change the rules.
+    expect((await rpc(g.session, 'setGroupRoles', { rules: [] })).body.reason).toBe('not-admin')
+
+    // Promoted in the IdP: admin at her next sign-in. No groups sent: unchanged.
+    g = await gita(['EHS-Admins', 'EHS-Managers'])
+    expect((await read(g.session, 'users', 'gita@northwind.test')).doc.role).toBe('admin')
+    g = await gita([])
+    expect((await read(g.session, 'users', 'gita@northwind.test')).doc.role).toBe('admin')
+
+    // Two admins: the founder can be moved to manager by her groups...
+    const asha = await signIn(
+      app.origin,
+      keys,
+      request.contactEmail,
+      withGroups(request.contactEmail, ['EHS-Managers'])
+    )
+    expect((await read(asha.session, 'users', request.contactEmail)).doc.role).toBe('manager')
+    // ...but the last one standing is not, or nobody could administer.
+    g = await gita(['EHS-Managers'])
+    expect((await read(g.session, 'users', 'gita@northwind.test')).doc.role).toBe('admin')
+
+    // No mapped group, no invite, no domain rule: no account.
+    expect(
+      (
+        await signIn(
+          app.origin,
+          keys,
+          'zed@northwind.test',
+          withGroups('zed@northwind.test', ['Everyone'])
+        )
+      ).session
+    ).toBe('')
+    await app.stop()
+  })
+
+  it('provisions, deactivates, reactivates and deletes people over SCIM', async () => {
+    const { app, keys, founder, rpc, read } = await liveEnvironment()
+    const scim = (token, method, path, body) =>
+      fetch(`${app.origin}/scim/v2${path}`, {
+        method,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(body ? { 'Content-Type': 'application/scim+json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      }).then(async (r) => ({ status: r.status, body: r.status === 204 ? null : await r.json() }))
+
+    // Only an admin makes a token, and it is shown once.
+    expect((await scim('', 'GET', '/Users')).status).toBe(401)
+    const created = await rpc(founder, 'createScimToken')
+    const token = created.body.token
+    expect(token).toMatch(/^weehs_scim_/)
+    expect((await rpc(founder, 'scimStatus')).body).toMatchObject({ ok: true, enabled: true })
+    expect(JSON.stringify((await rpc(founder, 'scimStatus')).body)).not.toContain(token)
+    expect((await scim('weehs_scim_wrong', 'GET', '/Users')).status).toBe(401)
+    expect((await scim(token, 'GET', '/ServiceProviderConfig')).body.patch.supported).toBe(true)
+
+    // The directory adds Kiran: an invite, so his first sign-in lets him in.
+    const kiran = {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
+      userName: 'kiran@northwind.test',
+      name: { givenName: 'Kiran', familyName: 'Shah' },
+      emails: [{ value: 'Kiran@Northwind.test', primary: true }],
+      externalId: 'okta-00u1',
+      active: true,
+    }
+    const made = await scim(token, 'POST', '/Users', kiran)
+    expect(made.status).toBe(201)
+    const id = made.body.id
+    expect((await scim(token, 'POST', '/Users', kiran)).status).toBe(409)
+    const found = await scim(
+      token,
+      'GET',
+      `/Users?filter=${encodeURIComponent('userName eq "kiran@northwind.test"')}`
+    )
+    expect(found.body.totalResults).toBe(1)
+    expect((await rpc(founder, 'listInvites')).body.invites.map((i) => i.email)).toContain(
+      'kiran@northwind.test'
+    )
+    let k = await signIn(app.origin, keys, 'kiran@northwind.test')
+    expect(k.status).toBe(302)
+    const oldSession = k.session
+    expect((await read(oldSession, 'users', 'kiran@northwind.test')).doc.status).toBe('approved')
+
+    // Deactivated (Okta's shape): his account is disabled, his open session stops working.
+    const off = await scim(token, 'PATCH', `/Users/${id}`, {
+      schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+      Operations: [{ op: 'replace', value: { active: false } }],
+    })
+    expect(off.body.active).toBe(false)
+    expect((await signIn(app.origin, keys, 'kiran@northwind.test')).status).toBe(403)
+    const stillOpen = await read(
+      oldSession,
+      'organizations',
+      (await read(founder, 'users', request.contactEmail)).doc.orgId
+    )
+    expect(stillOpen.doc ?? null).toBeNull()
+
+    // Reactivated (Entra's shape): in again.
+    await scim(token, 'PATCH', `/Users/${id}`, {
+      schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+      Operations: [{ op: 'Replace', path: 'active', value: 'True' }],
+    })
+    k = await signIn(app.origin, keys, 'kiran@northwind.test')
+    expect(k.status).toBe(302)
+
+    // Deleted: gone from SCIM, and joining by domain does not let him back.
+    expect((await scim(token, 'DELETE', `/Users/${id}`)).status).toBe(204)
+    expect((await scim(token, 'GET', `/Users/${id}`)).status).toBe(404)
+    await rpc(founder, 'setAutoJoin', { domains: ['northwind.test'], role: 'member' })
+    expect((await signIn(app.origin, keys, 'kiran@northwind.test')).status).toBe(403)
+    // Someone the directory never deactivated still joins by domain.
+    expect((await signIn(app.origin, keys, 'lata@northwind.test')).status).toBe(302)
+
+    // A new token replaces the old; revoking stops it.
+    const second = (await rpc(founder, 'createScimToken')).body.token
+    expect((await scim(token, 'GET', '/Users')).status).toBe(401)
+    expect((await scim(second, 'GET', '/Users')).status).toBe(200)
+    await rpc(founder, 'revokeScimToken')
+    expect((await scim(second, 'GET', '/Users')).status).toBe(401)
+    await app.stop()
+  })
+
+  it('keeps the directory records and token out of the data API', async () => {
+    const { app, founder, rpc, read } = await liveEnvironment()
+    await rpc(founder, 'createScimToken')
+    const orgId = (await read(founder, 'users', request.contactEmail)).doc.orgId
+    const token = await read(founder, 'scimTokens', orgId)
+    expect(token.doc ?? null).toBeNull()
+    expect((await rpc(founder, 'createScimToken')).status).toBe(200)
+    await app.stop()
+  })
+})

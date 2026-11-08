@@ -52,7 +52,7 @@ function cleanName(value) {
 }
 
 /** The caller, if they are an approved admin who has cleared the password gate. */
-async function adminOf(engine, uid) {
+export async function adminOf(engine, uid) {
   if (!uid) return null
   const profile = await engine.get(WORKER, 'users', uid)
   if (!profile || profile.status !== 'approved' || profile.mustChangePassword === true) return null

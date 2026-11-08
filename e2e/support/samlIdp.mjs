@@ -99,7 +99,9 @@ export function signedResponse({
   const attributeXml = Object.entries(attributes)
     .map(
       ([n, v]) =>
-        `<saml:Attribute Name="${escape(n)}"><saml:AttributeValue>${escape(v)}</saml:AttributeValue></saml:Attribute>`
+        `<saml:Attribute Name="${escape(n)}">${(Array.isArray(v) ? v : [v])
+          .map((one) => `<saml:AttributeValue>${escape(one)}</saml:AttributeValue>`)
+          .join('')}</saml:Attribute>`
     )
     .join('')
   const now = new Date()

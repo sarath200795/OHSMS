@@ -135,5 +135,32 @@ export async function identityFromCode({
     sub: String(user.sub),
     email: String(user.email || ''),
     name: String(user.name || ''),
+    groups: groupsOf(user, tokens.id_token),
   }
+}
+
+/**
+ * Groups, for roles from groups (directory.mjs). Okta and Keycloak can put
+ * them in userinfo; Microsoft Entra puts them only in the ID token. The ID
+ * token came straight from the token endpoint over TLS, in exchange for this
+ * client's secret and PKCE verifier, so it is read here without checking its
+ * signature (OIDC Core 3.1.3.7); only its groups are used, never its
+ * identity, which comes from userinfo as before.
+ */
+function groupsOf(user, idToken) {
+  const out = new Set()
+  const take = (v) => {
+    for (const one of Array.isArray(v) ? v : []) {
+      if (typeof one === 'string' && one.trim() && one.length <= 256) out.add(one.trim())
+    }
+  }
+  take(user?.groups)
+  if (typeof idToken === 'string' && idToken.split('.').length === 3) {
+    try {
+      take(JSON.parse(Buffer.from(idToken.split('.')[1], 'base64url').toString('utf8'))?.groups)
+    } catch {
+      // Not a JWT we can read: groups from userinfo only.
+    }
+  }
+  return [...out].slice(0, 200)
 }
