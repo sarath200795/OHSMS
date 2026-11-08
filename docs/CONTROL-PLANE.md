@@ -270,7 +270,26 @@ In the company's IdP, register this environment as the application:
 The founder opens `https://ehs.example.com`, chooses **Continue with company
 sign-in**, signs in at their IdP, and lands in the portal as administrator.
 
-**Only the founder can sign in today.** See the first known limit below.
+## 10. Invite the rest of the company
+
+Signing in with the company's IdP proves who someone is, not that they belong
+in this environment or with what role — an IdP usually holds the whole
+company, contractors included. So people are invited first.
+
+1. An administrator opens **Employees** and chooses **Invite employee**.
+2. They enter the person's work email (the address the IdP will report for
+   them), an optional name, and a role: Admin, Manager / Safety Officer,
+   Member or Auditor.
+3. The person is emailed (when mail is configured) and signs in at the
+   environment's address with **Continue with company sign-in**. Their first
+   sign-in turns the invite into an account with that role.
+
+Pending invites are listed in the same dialog and can be withdrawn; a
+withdrawn address can no longer sign in. Someone the IdP authenticates but
+nobody invited is told there is no account on this organization. Only an
+approved administrator can invite, list or withdraw, and that is re-checked on
+every call, so an admin demoted mid-session loses it immediately. An existing
+member's role is changed in the Employees list, not by inviting them again.
 
 ## Updating an environment
 
@@ -281,13 +300,6 @@ unchanged across deploys.
 
 ## Known limits — read before promising a company a date
 
-- **Only the founder can sign in.** A first sign-in is admitted only against
-  an invite, and the only invite ever written is the founder's, at
-  fulfillment. The **Employees** page creates WEEHS Firebase accounts, which
-  this stack does not use. Anyone else the IdP authenticates is told there is
-  no account on this organization. Adding people needs an invite path on the
-  dedicated host (and the Employees page wired to it); until then a dedicated
-  environment is a one-person environment.
 - **OIDC endpoint layout.** The host calls `ISSUER/authorize`, `ISSUER/token`
   and `ISSUER/userinfo`; it does not read the provider's discovery document.
   Providers whose endpoints are elsewhere (Okta, Azure AD, Keycloak's

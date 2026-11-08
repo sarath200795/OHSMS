@@ -67,6 +67,9 @@ async function callable(name, { timeout } = {}) {
       if (!res.ok) {
         const err = new Error(body.message || 'The request was refused.')
         err.code = body.code || 'unknown'
+        // The dedicated host answers a refused job with { ok: false, reason }.
+        // Kept, so a screen can say why instead of "the request was refused".
+        if (typeof body.reason === 'string') err.reason = body.reason
         throw err
       }
       return { data: body }
@@ -276,6 +279,30 @@ export async function clearOrphanedDefectLocks({ dryRun = true } = {}) {
  * Called by shared/storage removeFile(), which stays best-effort: an orphaned
  * object is a cost, a failed delete is not a correctness bug.
  */
+/**
+ * Own-stack only: invite someone into the caller's organization. Their first
+ * sign-in with the company's identity provider then creates their account with
+ * this role. The dedicated host re-reads the caller's profile and refuses
+ * anyone who is not an approved admin (stack/invites.mjs).
+ * @returns {{ ok: true, email, role, emailed: boolean }}
+ */
+export async function inviteMember({ email, role, name } = {}) {
+  const fn = await callable('inviteMember')
+  return (await fn({ email, role, name })).data
+}
+
+/** Own-stack only: the organization's pending invites. */
+export async function listInvites() {
+  const fn = await callable('listInvites')
+  return (await fn()).data?.invites || []
+}
+
+/** Own-stack only: withdraw a pending invite. */
+export async function revokeInvite(email) {
+  const fn = await callable('revokeInvite')
+  return (await fn({ email })).data
+}
+
 export async function deleteOrgFile(path) {
   const fn = await callable('deleteOrgFile')
   return (await fn({ path })).data

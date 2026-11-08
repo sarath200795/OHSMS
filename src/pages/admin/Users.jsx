@@ -15,6 +15,8 @@ import {
 } from '../../shared/ui'
 import { initials } from '../../shared/lib/format'
 import EmployeeProvisioning from './EmployeeProvisioning'
+import OwnStackInvites from './OwnStackInvites'
+import { isOwnStackBuild } from '../../shared/auth/ownStackSession'
 
 const STATUS_TONE = { approved: 'green', pending: 'amber', suspended: 'red' }
 const emptyScope = { sites: [], regions: [], entities: [] }
@@ -139,12 +141,18 @@ export default function Users() {
           <div className="flex flex-wrap items-center gap-2">
             {pending > 0 && <Badge tone="amber">{pending} pending approval</Badge>}
             {requests > 0 && <Badge tone="violet">{requests} access request{requests === 1 ? '' : 's'}</Badge>}
-            <EmployeeProvisioning
-              orgId={orgId}
-              orgName={orgName}
-              actor={actor}
-              existingEmails={(users || []).map((u) => u.email)}
-            />
+            {/* A dedicated environment has no WEEHS passwords to provision:
+                people sign in with the company IdP once an admin invites them. */}
+            {isOwnStackBuild() ? (
+              <OwnStackInvites />
+            ) : (
+              <EmployeeProvisioning
+                orgId={orgId}
+                orgName={orgName}
+                actor={actor}
+                existingEmails={(users || []).map((u) => u.email)}
+              />
+            )}
           </div>
         }
       />

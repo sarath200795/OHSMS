@@ -12,6 +12,7 @@ import { identityFromCode } from './oidc.mjs'
 import { identityFromSupabase } from './supabaseAuth.mjs'
 import { authnRequestId, samlClient, identityFromSaml } from './saml.mjs'
 import { establishIdentity } from './identity.mjs'
+import { inviteMember, listInvites, revokeInvite } from './invites.mjs'
 import {
   stampIdentity,
   completePasswordChange,
@@ -543,6 +544,17 @@ export function createOwnStackServer({
       withdrawStalePermitMirrors: () => withdrawStaleMirrors(engine),
       sweepLotoPermits: () => sweepLoto(engine, { orgId: body.orgId }),
       notifyIncidentReported: () => productMail(mail, body),
+      inviteMember: () =>
+        inviteMember(engine, db, {
+          uid,
+          email: body.email,
+          role: body.role,
+          name: body.name,
+          mail,
+          origin,
+        }),
+      listInvites: () => listInvites(engine, db, { uid }),
+      revokeInvite: () => revokeInvite(engine, db, { uid, email: body.email }),
     }
     const fn = table[name]
     if (!fn) {
