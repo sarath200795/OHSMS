@@ -1,20 +1,40 @@
 import { PGlite } from '@electric-sql/pglite'
-import { describe, expect, it, beforeAll } from 'vitest'
+import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { applySchema, createEngine } from '../../../../stack/engine.mjs'
 import { createPostgresAdapter } from './postgres'
 
-const db = new PGlite()
+// Embedded by default. With OHSMS_TEST_PG_URL (an ordinary login role, the
+// shape a managed Postgres gives you) and OHSMS_TEST_PG_ADMIN_URL (a role
+// that bypasses RLS, for seeding and for reading back what really happened),
+// the same assertions run on a real Postgres. Embedded runs as superuser, and
+// that hid a bug: the SECURITY DEFINER helpers recursed on every member read
+// once their owner was an ordinary role (stack/schema.sql). docs/CONTROL-PLANE.md.
+const PG_URL = process.env.OHSMS_TEST_PG_URL
+const PG_ADMIN_URL = process.env.OHSMS_TEST_PG_ADMIN_URL
+const onPg = Boolean(PG_URL && PG_ADMIN_URL)
+const { createPgDatabase } = onPg ? await import('../../../../stack/pg.mjs') : {}
+
+/** The app's own connection: what the gateway uses. */
+const db = onPg ? createPgDatabase(PG_URL) : new PGlite()
 const engine = createEngine(db)
+/** Seeding and read-back, past RLS. On embedded, the same superuser handle. */
+const admin = onPg ? createPgDatabase(PG_ADMIN_URL) : db
+const adminEngine = onPg ? createEngine(admin) : engine
 
 const browser = (uid) => ({ role: 'ohsms_browser', uid })
 const as = (uid) => createPostgresAdapter(engine, browser(uid))
 
 async function seed(path, id, data) {
-  await engine.commit(null, [{ type: 'set', path, id, data, merge: false }])
+  await adminEngine.commit(null, [{ type: 'set', path, id, data, merge: false }])
 }
+
+afterAll(async () => {
+  if (onPg) await Promise.all([db.end(), admin.end()])
+})
 
 beforeAll(async () => {
   await applySchema(db)
+  if (onPg) await admin.exec('TRUNCATE documents, files, policy_union, auth_secrets, invites')
   await seed('users', 'adminA', { orgId: 'orgA', role: 'admin', status: 'approved', name: 'Ada' })
   await seed('users', 'memberA', { orgId: 'orgA', role: 'member', status: 'approved', name: 'Mo' })
   await seed('users', 'auditorA', {
@@ -36,8 +56,8 @@ beforeAll(async () => {
   await seed('organizations/orgA/injuries', 'inj1', { status: 'open', orgId: 'orgA', name: 'Mo' })
   await seed('qr', 'tok1', { orgId: 'orgA', extId: 'ext1', token: 'tok1' })
   await seed('permitQr', 'ptok', { orgId: 'orgA', permitId: 'p1', token: 'ptok' })
-  await db.query(`INSERT INTO files (path, org_id) VALUES ('orgs/orgA/photos/a.jpg', 'orgA')`)
-  await db.query(`INSERT INTO policy_union (id, org_id) VALUES ('row1', 'orgA')`)
+  await admin.query(`INSERT INTO files (path, org_id) VALUES ('orgs/orgA/photos/a.jpg', 'orgA')`)
+  await admin.query(`INSERT INTO policy_union (id, org_id) VALUES ('row1', 'orgA')`)
 })
 
 describe('org isolation', () => {
@@ -50,7 +70,7 @@ describe('org isolation', () => {
     ).rejects.toMatchObject({
       code: 'permission-denied',
     })
-    expect(await engine.get(null, 'organizations/orgB/incidents', 'sneak')).toBeNull()
+    expect(await adminEngine.get(null, 'organizations/orgB/incidents', 'sneak')).toBeNull()
   })
 })
 
@@ -65,12 +85,14 @@ describe('roles', () => {
     await expect(
       member.set('organizations/orgA/injuries', 'inj-new', { status: 'verified', orgId: 'orgA' })
     ).rejects.toMatchObject({ code: 'permission-denied' })
-    expect((await engine.get(null, 'organizations/orgA/injuries', 'inj1')).status).toBe('open')
+    expect((await adminEngine.get(null, 'organizations/orgA/injuries', 'inj1')).status).toBe('open')
 
     const admin = as('adminA')
     expect(await admin.get('organizations/orgA/injuries', 'inj1')).toMatchObject({ status: 'open' })
     await admin.update('organizations/orgA/injuries', 'inj1', { status: 'verified' })
-    expect((await engine.get(null, 'organizations/orgA/injuries', 'inj1')).status).toBe('verified')
+    expect((await adminEngine.get(null, 'organizations/orgA/injuries', 'inj1')).status).toBe(
+      'verified'
+    )
   })
 
   it('does not let an auditor delete a document or a file', async () => {
@@ -78,7 +100,7 @@ describe('roles', () => {
     await expect(auditor.remove('organizations/orgA/incidents', 'i1')).rejects.toMatchObject({
       code: 'permission-denied',
     })
-    expect(await engine.get(null, 'organizations/orgA/incidents', 'i1')).toMatchObject({
+    expect(await adminEngine.get(null, 'organizations/orgA/incidents', 'i1')).toMatchObject({
       title: 'Cut',
     })
 
@@ -88,12 +110,12 @@ describe('roles', () => {
       return tx.query(`DELETE FROM files WHERE path = 'orgs/orgA/photos/a.jpg'`)
     })
     expect(fileDelete.affectedRows).toBe(0)
-    const still = await db.query(`SELECT path FROM files WHERE path = 'orgs/orgA/photos/a.jpg'`)
+    const still = await admin.query(`SELECT path FROM files WHERE path = 'orgs/orgA/photos/a.jpg'`)
     expect(still.rows).toHaveLength(1)
   })
 
   it('lets a manager delete a file in their own org and not another', async () => {
-    await db.query(
+    await admin.query(
       `INSERT INTO files (path, org_id) VALUES ('orgs/orgA/photos/b.jpg', 'orgA'), ('orgs/orgB/photos/c.jpg', 'orgB') ON CONFLICT DO NOTHING`
     )
     await db.transaction(async (tx) => {
@@ -105,7 +127,7 @@ describe('roles', () => {
       // Not visible under the delete policy, so the statement removes nothing.
       expect(foreign.affectedRows).toBe(0)
     })
-    const left = await db.query(`SELECT path FROM files WHERE path = 'orgs/orgB/photos/c.jpg'`)
+    const left = await admin.query(`SELECT path FROM files WHERE path = 'orgs/orgB/photos/c.jpg'`)
     expect(left.rows).toHaveLength(1)
   })
 })
@@ -135,7 +157,7 @@ describe('anonymous token-bound writes', () => {
       extId: 'ext1',
       token: 'tok1',
     })
-    expect(await engine.get(null, 'organizations/orgA/reports', id)).toMatchObject({
+    expect(await adminEngine.get(null, 'organizations/orgA/reports', id)).toMatchObject({
       extId: 'ext1',
     })
   })
@@ -165,7 +187,7 @@ describe('post-state check', () => {
         name: 'Mo',
       })
     ).rejects.toMatchObject({ code: 'permission-denied' })
-    expect((await engine.get(null, 'users', 'memberA')).role).toBe('member')
+    expect((await adminEngine.get(null, 'users', 'memberA')).role).toBe('member')
   })
 
   it('does not let the password gate be cleared by the person holding it', async () => {
@@ -184,7 +206,7 @@ describe('post-state check', () => {
         name: 'Temp',
       })
     ).rejects.toMatchObject({ code: 'permission-denied' })
-    expect((await engine.get(null, 'users', 'flaggedA')).mustChangePassword).toBe(true)
+    expect((await adminEngine.get(null, 'users', 'flaggedA')).mustChangePassword).toBe(true)
   })
 })
 
@@ -201,7 +223,7 @@ describe('permissive union', () => {
     // Both policies match an approved auditor. The restrictive one wins, so
     // the broad grant removes nothing.
     expect(await deleted()).toBe(0)
-    expect(await db.query(`SELECT id FROM policy_union WHERE id = 'row1'`)).toMatchObject({
+    expect(await admin.query(`SELECT id FROM policy_union WHERE id = 'row1'`)).toMatchObject({
       rows: [{ id: 'row1' }],
     })
 
@@ -210,7 +232,7 @@ describe('permissive union', () => {
 
     await db.exec(`CREATE POLICY union_auditor_cannot_delete ON policy_union AS RESTRICTIVE FOR DELETE TO ohsms_browser
       USING (COALESCE(app_profile()->>'role', '') <> 'auditor')`)
-    await db.query(`INSERT INTO policy_union (id, org_id) VALUES ('row1', 'orgA')`)
+    await admin.query(`INSERT INTO policy_union (id, org_id) VALUES ('row1', 'orgA')`)
     expect(await deleted()).toBe(0)
   })
 })

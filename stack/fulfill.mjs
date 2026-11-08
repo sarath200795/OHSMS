@@ -10,7 +10,7 @@
 // are already stored and the request is not live yet.
 
 import { randomBytes } from 'node:crypto'
-import { applySchema } from './engine.mjs'
+import { applySchema, asWorker } from './engine.mjs'
 import { newSessionSecret } from './session.mjs'
 import { statusPatch, takeSecrets } from './intake.mjs'
 
@@ -94,6 +94,21 @@ export async function fulfillRequest({
   ) {
     return { ok: false, reason: 'saml' }
   }
+  // The same for the other two: the host adopts the issuer from the request
+  // and the key from this handoff, and going live without them left a sign-in
+  // page that could only ever answer "not configured".
+  if (
+    request.authMethod === 'supabase' &&
+    !(present(request.authIssuer) && present(secret.supabaseAnonKey))
+  ) {
+    return { ok: false, reason: 'supabase' }
+  }
+  if (
+    request.authMethod === 'oidc' &&
+    !(present(request.authIssuer) && present(request.authClientId))
+  ) {
+    return { ok: false, reason: 'oidc' }
+  }
   if (
     (request.mode === 'bring' || secret.databaseUrl) &&
     request.engine === 'postgres' &&
@@ -120,7 +135,8 @@ export async function fulfillRequest({
       },
     },
   ])
-  await db.query(
+  await asWorker(
+    db,
     `INSERT INTO invites (email, org_id, role, name) VALUES ($1, $2, 'admin', $3)
      ON CONFLICT (email) DO UPDATE SET org_id = EXCLUDED.org_id, role = 'admin', name = EXCLUDED.name`,
     [

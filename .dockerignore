@@ -1,6 +1,9 @@
-# Build context for Dockerfile.emulators (JDK + firebase-tools only).
-# The app itself is bind-mounted at runtime; it does not need to be in the image.
+# Build context for Dockerfile.emulators (JDK + firebase-tools only) and
+# stack/Dockerfile. The emulator image bind-mounts the app at runtime; the
+# stack image installs its own dependencies, so no node_modules goes in.
 node_modules
+**/node_modules
+recordings
 dist
 .git
 .github

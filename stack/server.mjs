@@ -91,6 +91,39 @@ function challenge(verifier) {
   return createHash('sha256').update(verifier).digest('base64url')
 }
 
+/**
+ * The sign-in configuration a fulfilled request puts this host into. The
+ * public half (issuer, client id) is on the request; the secret half arrived
+ * on the handoff and nowhere else. null when the request names no IdP this
+ * host serves, which leaves the configuration it started with.
+ */
+export function adoptAuth(request, secrets = {}) {
+  if (request?.authMethod === 'saml') {
+    return {
+      method: 'saml',
+      clientId: request.authClientId || '',
+      idpCert: secrets.samlIdpCert,
+      entryPoint: secrets.samlEntryPoint,
+    }
+  }
+  if (request?.authMethod === 'oidc') {
+    return {
+      method: 'oidc',
+      issuer: request.authIssuer || '',
+      clientId: request.authClientId || '',
+      clientSecret: secrets.oidcClientSecret || '',
+    }
+  }
+  if (request?.authMethod === 'supabase') {
+    return {
+      method: 'supabase',
+      issuer: request.authIssuer || '',
+      anonKey: secrets.supabaseAnonKey || '',
+    }
+  }
+  return null
+}
+
 export function createOwnStackServer({
   engine,
   db,
@@ -104,6 +137,15 @@ export function createOwnStackServer({
   intake = new Map(),
   requests = new Map(),
   controlToken = '',
+  // Called with the sign-in configuration whenever fulfillment adopts one, so
+  // a deployment can keep it across a restart (stack/state.mjs).
+  onAuthChange = null,
+  // The built-in OIDC issuer under /oidc signs in whoever types an address.
+  // It exists so the local demo needs no IdP, and it is the issuer an
+  // unconfigured host falls back to. A deployment turns it off
+  // (stack/app.mjs does, always): with it on, anyone who typed an invited
+  // founder's email would be signed in as them.
+  demoIssuer = true,
 }) {
   const server = createServer(async (req, res) => {
     try {
@@ -141,8 +183,9 @@ export function createOwnStackServer({
         return
       }
       if (
-        url.pathname === '/oidc/.well-known/openid-configuration' ||
-        url.pathname === '/.well-known/openid-configuration'
+        demoIssuer &&
+        (url.pathname === '/oidc/.well-known/openid-configuration' ||
+          url.pathname === '/.well-known/openid-configuration')
       ) {
         const base = `${origin || ''}/oidc`
         send(res, 200, {
@@ -155,15 +198,15 @@ export function createOwnStackServer({
         })
         return
       }
-      if (url.pathname === '/oidc/authorize') {
+      if (demoIssuer && url.pathname === '/oidc/authorize') {
         await onAuthorize(req, res, url)
         return
       }
-      if (req.method === 'POST' && url.pathname === '/oidc/token') {
+      if (demoIssuer && req.method === 'POST' && url.pathname === '/oidc/token') {
         await onToken(req, res)
         return
       }
-      if (req.method === 'GET' && url.pathname === '/oidc/userinfo') {
+      if (demoIssuer && req.method === 'GET' && url.pathname === '/oidc/userinfo') {
         onUserinfo(req, res)
         return
       }
@@ -294,6 +337,10 @@ export function createOwnStackServer({
     return x.length > 0 && x.length === y.length && timingSafeEqual(x, y)
   }
 
+  function oidcIssuer() {
+    return auth.issuer || (demoIssuer ? `${origin}/oidc` : '')
+  }
+
   async function onAuthStart(url, res) {
     if (auth.method === 'saml') {
       let location
@@ -316,11 +363,15 @@ export function createOwnStackServer({
       })
       return
     }
+    const issuer = oidcIssuer()
+    if (!issuer) {
+      send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
+      return
+    }
     const state = randomBytes(16).toString('base64url')
     const verifier = randomBytes(32).toString('base64url')
     const binding = randomBytes(24).toString('base64url')
     codes.set(`state:${state}`, { verifier, binding, at: Date.now() })
-    const issuer = auth.issuer || `${origin}/oidc`
     const redirect = `${origin}/auth/callback`
     const location = `${issuer.replace(/\/$/, '')}/authorize?response_type=code&client_id=${encodeURIComponent(auth.clientId || 'ohsms')}&redirect_uri=${encodeURIComponent(redirect)}&scope=openid%20email%20profile&state=${state}&code_challenge=${challenge(verifier)}&code_challenge_method=S256`
     send(res, 302, '', {
@@ -344,7 +395,11 @@ export function createOwnStackServer({
       send(res, 400, { code: 'invalid-argument', message: 'sign-in could not be completed' }, clear)
       return
     }
-    const issuer = (auth.issuer || `${origin}/oidc`).replace(/\/$/, '')
+    const issuer = oidcIssuer().replace(/\/$/, '')
+    if (!issuer) {
+      send(res, 503, { code: 'unavailable', message: 'single sign-on is not configured' })
+      return
+    }
     const identity = await identityFromCode({
       tokenEndpoint: `${issuer}/token`,
       userinfoEndpoint: `${issuer}/userinfo`,
@@ -619,6 +674,9 @@ export function createOwnStackServer({
       }
     }
     intake.set(request.id, { hash: hashIntakeToken(token), secrets: null, used: false })
+    // Stored before the link leaves: a restart between the two would mail a
+    // token the host no longer recognises.
+    await intake.flush?.()
     let sent = false
     if (mail) {
       const mailed = await mail(
@@ -669,6 +727,10 @@ export function createOwnStackServer({
     slot.used = true
     slot.hash = null
     slot.secrets = taken.value
+    // The slot is mutated in place; set it again so a persistent store sees the
+    // consumed token and the secrets, and wait for that before fulfilling.
+    intake.set(requestId, slot)
+    await intake.flush?.()
     return runFulfill(request, slot.secrets)
   }
 
@@ -684,6 +746,7 @@ export function createOwnStackServer({
           update: async (id, patch) => {
             const current = requests.get(id)
             requests.set(id, { ...current, ...patch })
+            await requests.flush?.()
           },
         },
         mail,
@@ -698,15 +761,13 @@ export function createOwnStackServer({
     // else: they are not on the request and not in the public env. Once the
     // environment is live, this host is that company's service provider, so it
     // takes them from the intake it just accepted.
-    if (body.ok && request.authMethod === 'saml') {
-      auth = {
-        ...auth,
-        method: 'saml',
-        clientId: request.authClientId || auth.clientId,
-        idpCert: secrets.samlIdpCert,
-        entryPoint: secrets.samlEntryPoint,
+    if (body.ok) {
+      const adopted = adoptAuth(request, secrets)
+      if (adopted) {
+        auth = { ...auth, ...adopted }
+        saml = null
+        await onAuthChange?.(auth)
       }
-      saml = null
     }
     return { http: body.ok ? 200 : 400, body }
   }
@@ -736,6 +797,7 @@ export function createOwnStackServer({
       return
     }
     requests.set(accepted.value.id, accepted.value)
+    await requests.flush?.()
     const opened = await openIntake(requests.get(accepted.value.id))
     send(res, opened.http, opened.body)
   }

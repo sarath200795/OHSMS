@@ -42,6 +42,21 @@ function mapError(e) {
   return e
 }
 
+/**
+ * Run `sql` as the worker role. invites and auth_secrets FORCE row level
+ * security, so a statement issued as the login role is refused on any
+ * Postgres where that role is not a superuser — which is every managed one.
+ * On PGlite the login role is a superuser and bypasses RLS anyway, which is
+ * how fulfillment, first sign-in and the password gate shipped working only
+ * there. The role is set for this statement's transaction and no longer.
+ */
+export async function asWorker(db, sql, params = []) {
+  return db.transaction(async (tx) => {
+    await tx.exec('SET LOCAL ROLE ohsms_worker')
+    return tx.query(sql, params)
+  })
+}
+
 export async function applySchema(db) {
   await db.exec(SCHEMA)
 }
