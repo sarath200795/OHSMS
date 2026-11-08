@@ -154,8 +154,9 @@ for s in state-key control-token session-secret data-key-master database-url smt
 ## 4. Build the image
 
 One image serves every company; nothing about a company is built into it.
-Build it once per WEEHS version and reuse it for every environment. From the
-repository root:
+Each version tag publishes it to `ghcr.io/OWNER/weehs-dedicated` with a
+release page ([`RELEASES.md`](RELEASES.md)); use that image and skip this
+step. To build it yourself instead, from the repository root:
 
 ```bash
 gcloud artifacts repositories create ehs --repository-format=docker --location=REGION
@@ -174,8 +175,18 @@ says the environment is not set up yet.
 ## 5. Deploy to Cloud Run
 
 ```bash
-gcloud run deploy ehs-COMPANY --image=REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:v1 --region=REGION --allow-unauthenticated --max-instances=1 --add-cloudsql-instances=PROJECT:REGION:ehs-COMPANY --set-env-vars=PUBLIC_ORIGIN=https://ehs.example.com,SMTP_HOST=smtp-relay.brevo.com,SMTP_PORT=587,SMTP_USER=BREVO-LOGIN,MAIL_FROM='EHS notifications <info@weehs.org>' --set-secrets=STATE_KEY=ehs-COMPANY-state-key:latest,CONTROL_TOKEN=ehs-COMPANY-control-token:latest,SESSION_SECRET=ehs-COMPANY-session-secret:latest,DATA_KEY_MASTER=ehs-COMPANY-data-key-master:latest,DATABASE_URL=ehs-COMPANY-database-url:latest,SMTP_PASS=ehs-COMPANY-smtp-pass:latest
+gcloud run deploy ehs-COMPANY --image=IMAGE --region=REGION --allow-unauthenticated --max-instances=1 --add-cloudsql-instances=PROJECT:REGION:ehs-COMPANY --set-env-vars=PUBLIC_ORIGIN=https://ehs.example.com,SMTP_HOST=smtp-relay.brevo.com,SMTP_PORT=587,SMTP_USER=BREVO-LOGIN,MAIL_FROM='EHS notifications <info@weehs.org>' --set-secrets=STATE_KEY=ehs-COMPANY-state-key:latest,CONTROL_TOKEN=ehs-COMPANY-control-token:latest,SESSION_SECRET=ehs-COMPANY-session-secret:latest,DATA_KEY_MASTER=ehs-COMPANY-data-key-master:latest,DATABASE_URL=ehs-COMPANY-database-url:latest,SMTP_PASS=ehs-COMPANY-smtp-pass:latest
 ```
+
+- `IMAGE`: an image in your Artifact Registry. Cloud Run does not pull from
+  `ghcr.io`, so either build it (step 4) or copy the release image in, by the
+  digest on its release page:
+
+  ```bash
+  docker pull ghcr.io/OWNER/weehs-dedicated@sha256:DIGEST
+  docker tag ghcr.io/OWNER/weehs-dedicated@sha256:DIGEST REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:VERSION
+  docker push REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:VERSION
+  ```
 
 - **`--max-instances=1` is required.** A sign-in that is half-way through (the
   SAML request id, the OIDC state) is held in the instance's memory; with two
