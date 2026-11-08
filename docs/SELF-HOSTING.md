@@ -47,9 +47,8 @@ command that generates the random ones:
   `@sha256:` digest form.
 - `DOMAIN`: your domain, without `https://`.
 - `DB_ADMIN_PASSWORD`, `APP_DB_PASSWORD`: `openssl rand -hex 24` each.
-- `STATE_KEY`: `openssl rand -base64 32`.
-- `CONTROL_TOKEN`, `SESSION_SECRET`, `DATA_KEY_MASTER`: `openssl rand -hex 32`
-  each.
+- `STATE_KEY`, `DATA_KEY_MASTER`: `openssl rand -base64 32` each.
+- `CONTROL_TOKEN`, `SESSION_SECRET`: `openssl rand -hex 32` each.
 - The `SMTP_` settings and `MAIL_FROM`, if you want mail.
 
 Then make it readable only by the administrator:
