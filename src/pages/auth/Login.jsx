@@ -183,6 +183,24 @@ export default function Login() {
   // company password into a form that is not their company's. Register and
   // Join are absent for the same reason: both refuse on this build.
   // docs/CUSTOM-STACK.md, "Auth — follows the registration choice".
+  // A dedicated environment before its secret handoff has no IdP yet. The
+  // password form would invite a password nobody here can check.
+  if (isOwnStackBuild() && !['oidc', 'saml', 'supabase'].includes(ownStackAuthMethod())) {
+    return (
+      <AuthLayout
+        title="Not set up yet"
+        subtitle="Occupational Health & Safety Management System"
+        showcase={<LoginModules />}
+      >
+        <p className="text-sm leading-relaxed text-ink-600">
+          This environment is waiting for your organization&apos;s sign-in to be connected. Your
+          administrator receives a one-time setup link by email; sign-in opens here once it is
+          complete.
+        </p>
+      </AuthLayout>
+    )
+  }
+
   if (isOwnStackBuild() && ['oidc', 'saml'].includes(ownStackAuthMethod())) {
     return (
       <AuthLayout

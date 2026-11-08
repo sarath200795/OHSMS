@@ -166,6 +166,7 @@ import firestore from './adapters/firestore'
 import memory from './adapters/memory'
 import postgres from './adapters/postgres'
 import { resolveDataDriver } from './resolveDriver'
+import { runtimeEnv } from '../runtimeConfig'
 
 // Static registry (not dynamic imports): subscribe() must return an
 // unsubscribe function synchronously, which an async-loaded adapter cannot do
@@ -180,5 +181,5 @@ const DRIVERS = {
 // Throws UnimplementedDataDriverError for supabase until that flavor's adapter
 // is actually in DRIVERS. postgres is registered. Unknown names still resolve
 // to firestore.
-export const dataDriver = resolveDataDriver(import.meta.env.VITE_DATA_DRIVER, DRIVERS)
+export const dataDriver = resolveDataDriver(runtimeEnv('DATA_DRIVER'), DRIVERS)
 export const dataProvider = DRIVERS[dataDriver]

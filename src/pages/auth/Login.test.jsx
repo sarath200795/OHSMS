@@ -62,6 +62,17 @@ describe.each(['saml', 'oidc'])('own-stack build on company %s', (method) => {
   })
 })
 
+describe('a dedicated environment before its handoff', () => {
+  it('says it is not set up instead of asking for a password', () => {
+    vi.stubEnv('VITE_DATA_DRIVER', 'postgres')
+    vi.stubEnv('VITE_AUTH_METHOD', 'none')
+    render(<Login />)
+    expect(screen.getByText(/waiting for your organization/i)).toBeTruthy()
+    expect(screen.queryByLabelText('Password')).toBeNull()
+    expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull()
+  })
+})
+
 describe('builds that do sign in with a password here', () => {
   it('keeps the password form on the shared WEEHS build', () => {
     render(<Login />)

@@ -23,7 +23,8 @@ on one origin:
   emails the one-time secret-handoff link, and fulfils the request;
 - the **gateway** the app talks to (`/data`, `/presign`, `/rpc`, sign-in),
   enforcing tenancy with Postgres row-level security;
-- the company's **build of the app**, compiled with the own-stack flags.
+- the **app**. The same build serves every company: the host tells it its
+  gateway, sign-in and file store when it loads (`/runtime-config.js`).
 
 **One environment serves one company.** It holds one sign-in configuration;
 filing a second company's request on it would replace the first company's
@@ -49,7 +50,7 @@ The lifecycle:
 - From `/platform/provisioning`: the company's request (id, organization,
   contact, hosting mode, sign-in method, issuer URL, client id, bucket choice).
 - The web address the company will use, for example `https://ehs.example.com`.
-  Decide it now: it is compiled into the app (step 4).
+  It is a deploy setting (`PUBLIC_ORIGIN`, step 5), not part of the image.
 
 ```bash
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
@@ -152,25 +153,28 @@ for s in state-key control-token session-secret data-key-master database-url smt
 
 ## 4. Build the image
 
-The app's settings are compiled in, so each company gets its own image. From
-the repository root:
+One image serves every company; nothing about a company is built into it.
+Build it once per WEEHS version and reuse it for every environment. From the
+repository root:
 
 ```bash
 gcloud artifacts repositories create ehs --repository-format=docker --location=REGION
 ```
 
 ```bash
-gcloud builds submit --config stack/cloudbuild.yaml --substitutions=_IMAGE=REGION-docker.pkg.dev/PROJECT/ehs/COMPANY:v1,_PUBLIC_ORIGIN=https://ehs.example.com,_AUTH_METHOD=saml .
+gcloud builds submit --config stack/cloudbuild.yaml --substitutions=_IMAGE=REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:v1 .
 ```
 
-- `_AUTH_METHOD`: the request's sign-in method: `saml`, `oidc` or `supabase`.
-- `_S3_PRESIGN_ENDPOINT`: the company's presign endpoint if it brought its own
-  bucket. Leave it out otherwise.
+The sign-in method, gateway and presign endpoint the app uses are read from
+the environment at load: the method from the IdP the handoff adopts, the
+presign endpoint from the request (the company's own when it brought a
+bucket), the gateway from `PUBLIC_ORIGIN`. Before the handoff the sign-in page
+says the environment is not set up yet.
 
 ## 5. Deploy to Cloud Run
 
 ```bash
-gcloud run deploy ehs-COMPANY --image=REGION-docker.pkg.dev/PROJECT/ehs/COMPANY:v1 --region=REGION --allow-unauthenticated --max-instances=1 --add-cloudsql-instances=PROJECT:REGION:ehs-COMPANY --set-env-vars=PUBLIC_ORIGIN=https://ehs.example.com,SMTP_HOST=smtp-relay.brevo.com,SMTP_PORT=587,SMTP_USER=BREVO-LOGIN,MAIL_FROM='EHS notifications <info@weehs.org>' --set-secrets=STATE_KEY=ehs-COMPANY-state-key:latest,CONTROL_TOKEN=ehs-COMPANY-control-token:latest,SESSION_SECRET=ehs-COMPANY-session-secret:latest,DATA_KEY_MASTER=ehs-COMPANY-data-key-master:latest,DATABASE_URL=ehs-COMPANY-database-url:latest,SMTP_PASS=ehs-COMPANY-smtp-pass:latest
+gcloud run deploy ehs-COMPANY --image=REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:v1 --region=REGION --allow-unauthenticated --max-instances=1 --add-cloudsql-instances=PROJECT:REGION:ehs-COMPANY --set-env-vars=PUBLIC_ORIGIN=https://ehs.example.com,SMTP_HOST=smtp-relay.brevo.com,SMTP_PORT=587,SMTP_USER=BREVO-LOGIN,MAIL_FROM='EHS notifications <info@weehs.org>' --set-secrets=STATE_KEY=ehs-COMPANY-state-key:latest,CONTROL_TOKEN=ehs-COMPANY-control-token:latest,SESSION_SECRET=ehs-COMPANY-session-secret:latest,DATA_KEY_MASTER=ehs-COMPANY-data-key-master:latest,DATABASE_URL=ehs-COMPANY-database-url:latest,SMTP_PASS=ehs-COMPANY-smtp-pass:latest
 ```
 
 - **`--max-instances=1` is required.** A sign-in that is half-way through (the

@@ -63,6 +63,33 @@ const BASE_HEADERS = {
   'Strict-Transport-Security': 'max-age=31536000',
 }
 
+/**
+ * The settings the app reads before it starts (src/shared/runtimeConfig.js),
+ * from what this environment is now rather than from how its image was
+ * built. That is what lets one image serve every company: the sign-in method
+ * follows the IdP the handoff adopted, the presign endpoint follows the
+ * request, and the gateway is this origin.
+ *
+ * Every value is a JSON string, and `<` is escaped, so nothing a request
+ * carried can close the script or start another one.
+ */
+export function runtimeConfigScript({ origin, auth, requests }) {
+  const live = [...(requests?.values?.() || [])].find((r) => r?.status === 'live')
+  const brought =
+    live?.bucketMode === 'bring' && /^https:\/\/[^\s"'<>]+$/.test(live?.presignUrl || '')
+  const method = ['saml', 'oidc', 'supabase'].includes(auth?.method) ? auth.method : 'none'
+  const config = {
+    DATA_DRIVER: 'postgres',
+    DATA_GATEWAY: origin,
+    STORAGE_DRIVER: 's3',
+    S3_PRESIGN_ENDPOINT: brought ? live.presignUrl : `${origin}/presign`,
+    AUTH_METHOD: method,
+    AUTH_TOTP: 'off',
+  }
+  const json = JSON.stringify(config).replace(/</g, '\\u003c')
+  return `window.__OHSMS_CONFIG__ = ${json};\n`
+}
+
 function isApi(pathname) {
   return API_PREFIXES.some((p) => pathname === p.replace(/\/$/, '') || pathname.startsWith(p))
 }
@@ -121,6 +148,8 @@ export async function createDedicatedApp({
   await applySchema(db)
   const engine = createEngine(db)
   const state = await openState(db, { key: stateKey })
+  // The sign-in the app is told about follows the one the host holds.
+  let currentAuth = state.auth || { method: 'none' }
 
   const host = createOwnStackServer({
     engine,
@@ -128,14 +157,17 @@ export async function createDedicatedApp({
     sessionSecret,
     origin,
     // Before a handoff names an IdP, there is none: sign-in answers 503.
-    auth: state.auth || { method: 'none' },
+    auth: currentAuth,
     requests: state.requests,
     intake: state.intake,
     controlToken,
     dataKeyMaster,
     mail,
     demoIssuer: false,
-    onAuthChange: (auth) => state.saveAuth(auth),
+    onAuthChange: (auth) => {
+      currentAuth = auth
+      return state.saveAuth(auth)
+    },
   })
   const delegate = host.listeners('request')[0]
   host.removeAllListeners('request')
@@ -144,6 +176,22 @@ export async function createDedicatedApp({
   host.on('request', async (req, res) => {
     try {
       const url = new URL(req.url || '/', 'http://localhost')
+      if (
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        url.pathname === '/runtime-config.js'
+      ) {
+        res.writeHead(200, {
+          ...BASE_HEADERS,
+          'Content-Type': 'text/javascript; charset=utf-8',
+          // Changes the moment a handoff adopts an IdP.
+          'Cache-Control': 'no-store',
+        })
+        return res.end(
+          req.method === 'HEAD'
+            ? undefined
+            : runtimeConfigScript({ origin, auth: currentAuth, requests: state.requests })
+        )
+      }
       if (root && (req.method === 'GET' || req.method === 'HEAD') && !isApi(url.pathname)) {
         const file =
           (url.pathname !== '/' && (await staticFile(root, url.pathname))) ||

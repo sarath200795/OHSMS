@@ -14,6 +14,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore'
+import { runtimeEnv } from './runtimeConfig'
 
 // Strip a leading UTF-8 BOM, zero-width chars, surrounding quotes and whitespace
 // from an env value. Some build/deploy pipelines silently prepend a BOM, which
@@ -89,7 +90,7 @@ export const emulatorAuthUrl = USE_EMULATORS ? `http://${EMU_HOST}:${EMU_AUTH_PO
 
 // A dedicated own-stack build (VITE_DATA_DRIVER=postgres) has no Firebase
 // project by design, so the warning would only be noise there.
-const OWN_STACK = clean(import.meta.env.VITE_DATA_DRIVER).toLowerCase() === 'postgres'
+const OWN_STACK = clean(runtimeEnv('DATA_DRIVER')).toLowerCase() === 'postgres'
 if (!isFirebaseConfigured && !OWN_STACK) {
   // eslint-disable-next-line no-console
   console.warn('[OHS MS] Firebase is not configured. Copy .env.example to .env.')

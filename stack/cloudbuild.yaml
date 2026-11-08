@@ -1,28 +1,10 @@
-# Build one company's dedicated-environment image on Cloud Build.
-# docs/CONTROL-PLANE.md, step 4. Run from the repository root:
+# Build the dedicated-environment image on Cloud Build. One image serves
+# every company (docs/CONTROL-PLANE.md, step 4). From the repository root:
 #
 #   gcloud builds submit --config stack/cloudbuild.yaml \
-#     --substitutions=_IMAGE=REGION-docker.pkg.dev/PROJECT/REPO/NAME:TAG,_PUBLIC_ORIGIN=https://…,_AUTH_METHOD=saml .
-#
-# Nothing secret is a substitution: these values are compiled into the app.
+#     --substitutions=_IMAGE=REGION-docker.pkg.dev/PROJECT/REPO/weehs-dedicated:TAG .
 steps:
   - name: gcr.io/cloud-builders/docker
-    args:
-      - build
-      - -f
-      - stack/Dockerfile
-      - --build-arg
-      - PUBLIC_ORIGIN=${_PUBLIC_ORIGIN}
-      - --build-arg
-      - AUTH_METHOD=${_AUTH_METHOD}
-      - --build-arg
-      - S3_PRESIGN_ENDPOINT=${_S3_PRESIGN_ENDPOINT}
-      - -t
-      - ${_IMAGE}
-      - .
+    args: ['build', '-f', 'stack/Dockerfile', '-t', '${_IMAGE}', '.']
 images:
   - ${_IMAGE}
-substitutions:
-  _S3_PRESIGN_ENDPOINT: ''
-options:
-  dynamicSubstitutions: true

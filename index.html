@@ -92,6 +92,9 @@
       }
     </style>
     <script src="/boot-splash.js"></script>
+    <!-- Deployment settings, before the app: a classic script runs before any
+         module script, so src/shared/runtimeConfig.js sees them at import. -->
+    <script src="/runtime-config.js"></script>
   </head>
   <body>
     <div id="boot-splash" aria-hidden="true">
