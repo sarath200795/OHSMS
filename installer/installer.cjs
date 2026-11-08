@@ -1,10 +1,13 @@
 // WEEHS Installer: installs a self-hosted WEEHS without a terminal.
 //
-// Double-clicked, it starts a small web server on this computer only
-// (127.0.0.1, a free port) and opens the installer page in the default
-// browser. The page checks Docker, takes the address, writes the settings,
-// starts the database, the app and HTTPS (the same selfhost/ kit install.sh
-// uses, built into this program), and hands over to the app's own /setup.
+// Double-clicked on the server, it answers on port 80, which is the company's
+// own address once its DNS record points here, and shows a one-time
+// installer code on the server's own screen. From any computer the IT admin
+// opens http://their-address, enters the code, and the installer page checks
+// Docker, takes the address, writes the settings, prepares the containers,
+// and finally hands port 80 over to WEEHS: Caddy takes the address with
+// HTTPS, and the browser lands on https://their-address/setup with the setup
+// code already filled in. Every screen is at the company's own address.
 //
 // docs/SELF-HOSTING.md is the procedure; installer/README.md says how this
 // is built and why it is shaped this way.
@@ -19,8 +22,18 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
 const { randomBytes } = require('node:crypto')
-const { validDomain, safeValue, buildEnv, readEnv, allowedRequest } = require('./core.cjs')
-const { kitFiles, uiHtml, releaseInfo } = require('./assets.cjs')
+const {
+  validDomain,
+  safeValue,
+  buildEnv,
+  readEnv,
+  normalizeCode,
+  sameSecret,
+  makeInstallerCode,
+  createLockout,
+  actionAllowed,
+} = require('./core.cjs')
+const { kitFiles, uiHtml, codeHtml, releaseInfo } = require('./assets.cjs')
 
 const IDLE_EXIT_MS = 2 * 60 * 60 * 1000
 const say = (line) => process.stdout.write(`${line}\n`)
@@ -61,21 +74,17 @@ function run(cmd, args, { cwd, onLine } = {}) {
   })
 }
 
-async function checks(dir) {
+async function checks() {
   const docker = await run('docker', ['version', '--format', '{{.Server.Version}}'])
   const compose = docker.code === 0 ? await run('docker', ['compose', 'version', '--short']) : null
-  const installed = fs.existsSync(path.join(dir, '.env'))
-  const ports = installed
-    ? { 80: true, 443: true }
-    : { 80: await portFree(80), 443: await portFree(443) }
   return {
     os: process.platform,
     docker: docker.code === 0 ? docker.output.trim() : null,
     dockerProblem:
       docker.code === 0 ? '' : /not found|ENOENT/i.test(docker.output) ? 'missing' : 'not-running',
     compose: compose && compose.code === 0 ? compose.output.trim() : null,
-    ports,
-    installed,
+    // Port 80 is this installer's until the hand-over, so only 443 is asked.
+    port443: await portFree(443),
   }
 }
 
@@ -91,7 +100,7 @@ function portFree(port) {
 }
 
 // ── Installing ──────────────────────────────────────────────────────────────
-const job = { state: 'idle', steps: [], log: [], error: '', domain: '' }
+const job = { state: 'idle', steps: [], log: [], error: '' }
 
 function step(name, status) {
   const existing = job.steps.find((s) => s.name === name)
@@ -103,6 +112,13 @@ function logLine(line) {
   if (job.log[job.log.length - 1] === line) return
   job.log.push(line)
   if (job.log.length > 400) job.log.shift()
+}
+
+function fail(err) {
+  const current = job.steps.find((s) => s.status === 'running')
+  if (current) current.status = 'failed'
+  job.error = err.message
+  job.state = 'failed'
 }
 
 // Asked of Caddy on this computer, with the real name, so it works before DNS
@@ -131,7 +147,8 @@ function health(domain) {
   })
 }
 
-async function install(dir, settings) {
+/** Everything before the hand-over: files, settings, images, containers. */
+async function prepare(dir, settings) {
   job.state = 'running'
   job.steps = []
   job.log = []
@@ -160,49 +177,56 @@ async function install(dir, settings) {
       // the database that already exists.
       logLine('Keeping the existing settings and their secrets.')
     } else {
-      const text = buildEnv(kit['.env.example'], settings)
-      fs.writeFileSync(envPath, text, { mode: 0o600 })
+      fs.writeFileSync(envPath, buildEnv(kit['.env.example'], settings), { mode: 0o600 })
       logLine('Settings written, readable by this account only.')
     }
-    const env = readEnv(fs.readFileSync(envPath, 'utf8'))
-    job.domain = env.DOMAIN
     step('Write the settings and new secrets', 'done')
 
-    step('Start the database, the app and HTTPS', 'running')
-    const up = await run('docker', ['compose', 'up', '-d'], { cwd: dir, onLine: logLine })
-    if (up.code !== 0)
-      throw new Error('Docker could not start WEEHS. The details are in the log below.')
-    step('Start the database, the app and HTTPS', 'done')
-
-    step('Wait for WEEHS to answer', 'running')
-    let ok = false
-    for (let i = 0; i < 90 && !ok; i += 1) {
-      ok = await health(env.DOMAIN)
-      if (!ok) await new Promise((r) => setTimeout(r, 2000))
-    }
-    if (!ok) {
-      const logs = await run('docker', ['compose', 'logs', '--tail', '20', 'app'], { cwd: dir })
-      for (const line of logs.output.split(/\r?\n/)) if (line.trim()) logLine(line.trim())
-      throw new Error('WEEHS did not answer within three minutes. The app’s log is below.')
-    }
-    step('Wait for WEEHS to answer', 'done')
-    job.state = 'done'
+    // Images and containers now, so the hand-over below is only a start and
+    // the address is without an answer for as short a time as possible.
+    step('Download and prepare WEEHS', 'running')
+    const pulled = await run('docker', ['compose', 'pull', '--ignore-pull-failures'], {
+      cwd: dir,
+      onLine: logLine,
+    })
+    if (pulled.code !== 0)
+      logLine('Some images were not downloaded; using the ones on this computer.')
+    const created = await run('docker', ['compose', 'create'], { cwd: dir, onLine: logLine })
+    if (created.code !== 0)
+      throw new Error('Docker could not prepare WEEHS. The details are below.')
+    step('Download and prepare WEEHS', 'done')
+    job.state = 'ready'
   } catch (err) {
-    const current = job.steps.find((s) => s.status === 'running')
-    if (current) current.status = 'failed'
-    job.error = err.message
-    job.state = 'failed'
+    fail(err)
   }
 }
 
-function installedSummary(dir) {
+/** The hand-over: this program leaves port 80, WEEHS starts and takes it. */
+async function start(dir, domain) {
+  step('Start WEEHS with HTTPS', 'running')
+  const up = await run('docker', ['compose', 'up', '-d'], { cwd: dir, onLine: logLine })
+  if (up.code !== 0) throw new Error('Docker could not start WEEHS. The details are below.')
+  let ok = false
+  for (let i = 0; i < 90 && !ok; i += 1) {
+    ok = await health(domain)
+    if (!ok) await new Promise((r) => setTimeout(r, 2000))
+  }
+  if (!ok) {
+    const logs = await run('docker', ['compose', 'logs', '--tail', '20', 'app'], { cwd: dir })
+    for (const line of logs.output.split(/\r?\n/)) if (line.trim()) logLine(line.trim())
+    throw new Error('WEEHS did not answer within three minutes. The app’s log is below.')
+  }
+  step('Start WEEHS with HTTPS', 'done')
+}
+
+function settingsOf(dir) {
   const envPath = path.join(dir, '.env')
   if (!fs.existsSync(envPath)) return null
   const env = readEnv(fs.readFileSync(envPath, 'utf8'))
-  return { domain: env.DOMAIN, setupCode: env.CONTROL_TOKEN, image: env.WEEHS_IMAGE }
+  return { domain: env.DOMAIN, setupCode: env.CONTROL_TOKEN }
 }
 
-// ── The local web server ────────────────────────────────────────────────────
+// ── The web server ──────────────────────────────────────────────────────────
 function openBrowser(url) {
   if (process.env.WEEHS_INSTALLER_NO_BROWSER) return
   const cmd =
@@ -214,103 +238,138 @@ function openBrowser(url) {
   try {
     spawn(cmd[0], cmd[1], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
   } catch {
-    // The URL is printed too, for a desktop with no default browser set.
+    // The address is printed too.
   }
 }
 
+const isLoopback = (addr) => /^(127\.|::1$|::ffff:127\.)/.test(String(addr || ''))
+const hostOnly = (host) =>
+  String(host || '')
+    .replace(/:\d+$/, '')
+    .toLowerCase()
+
 function main() {
-  const token = randomBytes(24).toString('hex')
+  const code = makeInstallerCode()
+  const session = randomBytes(24).toString('hex')
+  const lockout = createLockout()
+  const port = Number(process.env.WEEHS_INSTALLER_PORT || 80)
   let dir = path.resolve(defaultDir())
   let idle = setTimeout(() => process.exit(0), IDLE_EXIT_MS)
+
+  // Already installed: there is nothing to set up, only to start again.
+  const existing = settingsOf(dir)
+  if (existing) {
+    say(`WEEHS is installed for ${existing.domain}. Starting it.`)
+    run('docker', ['compose', 'up', '-d'], { cwd: dir }).then(() => {
+      openBrowser(`https://${existing.domain}`)
+      process.exit(0)
+    })
+    return
+  }
 
   const server = http.createServer(async (req, res) => {
     clearTimeout(idle)
     idle = setTimeout(() => process.exit(0), IDLE_EXIT_MS)
-    const { port } = server.address()
-    const url = new URL(req.url, `http://127.0.0.1:${port}`)
-    const expectedHost = `127.0.0.1:${port}`
-    const send = (status, body, type = 'application/json') => {
+    const url = new URL(req.url, 'http://installer.invalid')
+    const send = (status, body, type = 'application/json', headers = {}) => {
       res.writeHead(status, {
         'Content-Type': type,
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'no-referrer',
+        ...headers,
       })
       res.end(type === 'application/json' ? JSON.stringify(body) : body)
     }
+    const readJson = async () => {
+      let body = ''
+      for await (const chunk of req) {
+        body += chunk
+        if (body.length > 16_384) break
+      }
+      try {
+        return JSON.parse(body || '{}')
+      } catch {
+        return null
+      }
+    }
 
     if (req.method === 'GET' && url.pathname === '/') {
-      if (
-        !allowedRequest({
-          host: req.headers.host,
-          token: url.searchParams.get('t'),
-          expectedHost,
-          expectedToken: token,
-        })
-      ) {
-        send(
-          403,
-          'Open the address this installer printed when it started.',
-          'text/plain; charset=utf-8'
-        )
+      // The server's own screen, opened by the installer itself, shows the
+      // code. Nobody reaching the company address from outside ever does.
+      const local =
+        isLoopback(req.socket.remoteAddress) &&
+        ['127.0.0.1', 'localhost'].includes(hostOnly(req.headers.host))
+      send(
+        200,
+        (local ? codeHtml() : uiHtml()).replace('__CODE__', code),
+        'text/html; charset=utf-8'
+      )
+      return
+    }
+    if (req.method === 'POST' && url.pathname === '/api/claim') {
+      const body = await readJson()
+      if (lockout.locked()) {
+        send(429, { error: 'Too many wrong codes. Wait a few minutes and try again.' })
         return
       }
-      send(200, uiHtml().replace('__TOKEN__', token), 'text/html; charset=utf-8')
+      if (!body || !sameSecret(normalizeCode(body.code), code)) {
+        lockout.fail()
+        send(403, {
+          error: 'That installer code is not right. It is shown on the server’s screen.',
+        })
+        return
+      }
+      send(200, { ok: true }, 'application/json', {
+        'Set-Cookie': `weehs_installer=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=7200`,
+      })
       return
     }
     if (!url.pathname.startsWith('/api/')) {
       send(404, { error: 'not found' })
       return
     }
-    // The backup is a download link, which cannot carry a header.
-    const given =
-      url.pathname === '/api/backup' ? url.searchParams.get('t') : req.headers['x-installer-token']
-    if (
-      !allowedRequest({ host: req.headers.host, token: given, expectedHost, expectedToken: token })
-    ) {
-      send(403, { error: 'refused' })
+    // The backup is a download link, which cannot set a header; the cookie is
+    // SameSite=Strict, so another site's link to it arrives without one.
+    const header = url.pathname === '/api/backup' ? '1' : req.headers['x-installer']
+    if (!actionAllowed({ cookie: req.headers.cookie, header, session })) {
+      send(401, { error: 'Enter the installer code first.' })
       return
     }
 
     if (req.method === 'GET' && url.pathname === '/api/state') {
+      const installed = settingsOf(dir)
       send(200, {
         release: releaseInfo(),
         dir,
-        checks: await checks(dir),
-        installed: installedSummary(dir),
+        addressHint: hostOnly(req.headers.host),
+        checks: job.state === 'idle' ? await checks() : null,
+        settings: installed,
         job: { state: job.state, steps: job.steps, log: job.log.slice(-60), error: job.error },
       })
       return
     }
-    if (req.method === 'POST' && url.pathname === '/api/install') {
+    if (req.method === 'POST' && url.pathname === '/api/prepare') {
       if (job.state === 'running') {
-        send(409, { error: 'An installation is already running.' })
+        send(409, { error: 'Already preparing.' })
         return
       }
-      let body = ''
-      for await (const chunk of req) {
-        body += chunk
-        if (body.length > 16_384) break
-      }
-      let input
-      try {
-        input = JSON.parse(body || '{}')
-      } catch {
+      const input = await readJson()
+      if (!input) {
         send(400, { error: 'That could not be read.' })
         return
       }
       const wanted = String(input.dir || dir).trim()
       if (!path.isAbsolute(wanted) || !safeValue(wanted)) {
-        send(400, { error: 'The folder must be a full path, like ' + defaultDir() })
+        send(400, { error: `The folder must be a full path, like ${defaultDir()}` })
         return
       }
       dir = path.resolve(wanted)
-      const already = fs.existsSync(path.join(dir, '.env'))
       const domain = String(input.domain || '')
         .trim()
         .toLowerCase()
-      if (!already && !validDomain(domain)) {
+      if (!fs.existsSync(path.join(dir, '.env')) && !validDomain(domain)) {
         send(400, {
           error: 'Enter the address as a name only, like ehs.example.com (no https://).',
         })
@@ -323,7 +382,7 @@ function main() {
           return
         }
       }
-      install(dir, { domain, image: releaseInfo().image, mail })
+      prepare(dir, { domain, image: releaseInfo().image, mail })
       send(202, { ok: true })
       return
     }
@@ -341,23 +400,65 @@ function main() {
       res.end(fs.readFileSync(envPath))
       return
     }
-    if (req.method === 'POST' && url.pathname === '/api/quit') {
-      send(200, { ok: true })
-      setTimeout(() => process.exit(0), 200)
+    if (req.method === 'POST' && url.pathname === '/api/finish') {
+      const installed = settingsOf(dir)
+      if (job.state !== 'ready' || !installed) {
+        send(409, { error: 'Not ready to start yet.' })
+        return
+      }
+      job.state = 'handing-over'
+      send(200, { ok: true, https: `https://${installed.domain}` })
+      // Leave port 80 to WEEHS. Should the start fail, come back on it, so the
+      // page that is waiting can show what went wrong.
+      server.close()
+      server.closeAllConnections?.()
+      try {
+        await start(dir, installed.domain)
+        job.state = 'done'
+        say(`WEEHS is running at https://${installed.domain}. The installer has finished.`)
+        setTimeout(() => process.exit(0), 500)
+      } catch (err) {
+        fail(err)
+        server.listen(port, '0.0.0.0')
+      }
       return
     }
     send(404, { error: 'not found' })
   })
 
-  server.listen(Number(process.env.WEEHS_INSTALLER_PORT || 0), '127.0.0.1', () => {
-    const { port } = server.address()
-    const address = `http://127.0.0.1:${port}/?t=${token}`
-    say('WEEHS Installer is open in your web browser.')
-    say(`If it did not open, go to: ${address}`)
-    openBrowser(address)
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' || err.code === 'EACCES') {
+      // Shown on the server's screen, in its own small page, so the person
+      // who double-clicked it is told why, without a terminal.
+      const reason =
+        err.code === 'EADDRINUSE'
+          ? 'Another program on this server is using the web port (80): another web server such as IIS, Apache or nginx. Stop it, then open the WEEHS Installer again.'
+          : 'This account may not use the web port (80). Open the WEEHS Installer as an administrator.'
+      const fallback = http.createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+        res.end(
+          codeHtml().replace(
+            /<main[\s\S]*<\/main>/,
+            `<main><h1>WEEHS Installer cannot start</h1><p>${reason}</p></main>`
+          )
+        )
+      })
+      fallback.listen(0, '127.0.0.1', () =>
+        openBrowser(`http://127.0.0.1:${fallback.address().port}/`)
+      )
+      say(reason)
+      return
+    }
+    throw err
+  })
+
+  server.listen(port, '0.0.0.0', () => {
+    say('WEEHS Installer is running.')
+    say(
+      `On any computer, open your company's address (http://ehs.yourcompany.com) and enter the installer code ${code}.`
+    )
+    openBrowser(`http://127.0.0.1${port === 80 ? '' : `:${port}`}/`)
   })
 }
 
-if (require.main === module) main()
-
-module.exports = { main, checks, install, job }
+module.exports = { main, checks, prepare, start, job }

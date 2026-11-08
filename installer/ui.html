@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WEEHS Installer</title>
+    <title>Install WEEHS</title>
     <style>
       :root {
         color-scheme: light;
@@ -148,6 +148,16 @@
         border-radius: 10px;
         background: #fff;
       }
+      input.code {
+        font:
+          700 1.4rem ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        max-width: 14rem;
+      }
       details {
         margin-top: 1.25rem;
         border: 1px solid var(--line);
@@ -212,27 +222,13 @@
           SFMono-Regular,
           Menlo,
           monospace;
-        max-height: 14rem;
+        max-height: 12rem;
         overflow: auto;
         margin: 1rem 0 0;
         white-space: pre-wrap;
       }
-      .code {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-        margin-top: 0.4rem;
-      }
-      .code input {
-        font:
-          13px ui-monospace,
-          SFMono-Regular,
-          Menlo,
-          monospace;
-      }
-      .code button {
-        margin: 0.3rem 0 0;
-        padding: 0.55rem 0.9rem;
+      pre.log:empty {
+        display: none;
       }
       .big {
         font-size: 1.15rem;
@@ -246,21 +242,40 @@
   <body>
     <header>
       <div class="logo" aria-hidden="true">W</div>
-      <div><b>WEEHS Installer</b><br /><span id="release">Loading…</span></div>
+      <div><b>Install WEEHS</b><br /><span id="release">On your company’s server</span></div>
     </header>
     <main>
       <ol class="steps" aria-label="Progress">
-        <li id="s-check">1 · Check this computer</li>
-        <li id="s-settings">2 · Your address</li>
-        <li id="s-install">3 · Install</li>
-        <li id="s-done">4 · Set up your organization</li>
+        <li id="s-code">1 · Installer code</li>
+        <li id="s-check">2 · Check the server</li>
+        <li id="s-settings">3 · Your address</li>
+        <li id="s-install">4 · Install</li>
+        <li id="s-live">5 · Go live</li>
       </ol>
 
-      <section class="card" id="p-check">
-        <h1>Check this computer</h1>
+      <section class="card" id="p-code">
+        <h1>Install WEEHS on this server</h1>
         <p class="muted">
-          WEEHS runs in Docker on this computer: the app, its database, and HTTPS for your address.
+          Enter the installer code shown on the server’s screen, where the WEEHS Installer was
+          opened.
         </p>
+        <label for="code"
+          >Installer code
+          <input
+            id="code"
+            class="code"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="XXXX-XXXX"
+            maxlength="9"
+        /></label>
+        <p class="error" id="code-error" role="alert" hidden></p>
+        <div class="actions"><button id="claim" type="button">Continue</button></div>
+      </section>
+
+      <section class="card" id="p-check" hidden>
+        <h1>Check the server</h1>
+        <p class="muted">WEEHS runs in Docker on this server: the app, its database, and HTTPS.</p>
         <div id="checks"><p class="muted">Checking…</p></div>
         <div class="actions">
           <button id="recheck" class="secondary" type="button">Check again</button>
@@ -271,144 +286,142 @@
       <section class="card" id="p-settings" hidden>
         <h1>Your address</h1>
         <p class="muted">
-          The address your people will open. Ask your IT team to point it at this computer (a DNS
-          record), and to allow web traffic (ports 80 and 443) to it.
+          The address your people will open: the one you are using now. WEEHS will answer on it with
+          HTTPS.
         </p>
         <label for="domain"
           >Address
-          <span class="hint"
-            >The name only, without https:// (for example ehs.yourcompany.com).</span
-          >
-          <input
-            id="domain"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="ehs.yourcompany.com"
-          />
+          <span class="hint">The name only, without http:// or https://.</span>
+          <input id="domain" autocomplete="off" spellcheck="false" />
         </label>
         <details>
           <summary>Email (optional)</summary>
           <p class="hint">
-            For invitations and notices. Without it, WEEHS still works: you tell people to sign in.
+            For invitations and notices. Without it WEEHS still works: you tell people to sign in.
           </p>
           <div class="row">
-            <label for="smtpHost"
-              >Mail server<input id="smtpHost" placeholder="smtp.yourcompany.com"
-            /></label>
+            <label for="smtpHost">Mail server<input id="smtpHost" /></label>
             <label for="smtpPort">Port<input id="smtpPort" value="587" /></label>
             <label for="smtpUser">User name<input id="smtpUser" autocomplete="off" /></label>
             <label for="smtpPass"
               >Password<input id="smtpPass" type="password" autocomplete="new-password"
             /></label>
           </div>
-          <label for="mailFrom"
-            >Send as<input id="mailFrom" placeholder="WEEHS &lt;ehs@yourcompany.com&gt;"
-          /></label>
+          <label for="mailFrom">Send as<input id="mailFrom" /></label>
         </details>
         <details>
-          <summary>Install folder</summary>
+          <summary>Install folder on the server</summary>
           <label for="dir"
-            >Folder<span class="hint"
-              >Where WEEHS keeps its settings. The data lives in Docker.</span
+            >Folder<span class="hint">Where WEEHS keeps its settings.</span
             ><input id="dir" spellcheck="false"
           /></label>
         </details>
         <p class="error" id="settings-error" role="alert" hidden></p>
         <div class="actions">
           <button id="back-check" class="secondary" type="button">Back</button>
-          <button id="install" type="button">Install WEEHS</button>
+          <button id="prepare" type="button">Install WEEHS</button>
         </div>
       </section>
 
       <section class="card" id="p-install" hidden>
         <h1>Installing WEEHS</h1>
-        <p class="muted">This takes a minute or two. Keep this page open.</p>
+        <p class="muted" id="install-note">This takes a minute or two. Keep this page open.</p>
         <div id="progress"></div>
+        <div id="ready" hidden>
+          <p class="big">Ready to go live at <span id="ready-address"></span></p>
+          <p>
+            First, keep a copy of the settings somewhere safe, away from the server. Without them a
+            restore is not possible.
+          </p>
+          <div class="actions">
+            <a class="button secondary" id="backup" href="/api/backup">Download settings backup</a>
+            <button id="finish" type="button" disabled>Switch to HTTPS and finish</button>
+          </div>
+        </div>
         <p class="error" id="install-error" role="alert" hidden></p>
         <pre class="log" id="log" aria-label="Details"></pre>
-        <div class="actions" id="retry-actions" hidden>
-          <button id="retry" type="button">Try again</button>
-        </div>
       </section>
 
-      <section class="card" id="p-done" hidden>
-        <h1>WEEHS is installed</h1>
-        <p class="big" id="done-address"></p>
-        <p>
-          Next, connect your organization and its company sign-in. You will need this
-          <b>setup code</b>:
+      <section class="card" id="p-live" hidden>
+        <h1>Going live</h1>
+        <p class="big" id="live-address"></p>
+        <p class="muted" id="live-note">
+          WEEHS is taking over this address with HTTPS. You will be taken to the organization setup
+          in a moment.
         </p>
-        <div class="code">
-          <input id="setup-code" readonly aria-label="Setup code" />
-          <button id="copy" type="button" class="secondary">Copy</button>
-        </div>
-        <p class="muted">
-          Keep a copy of the settings somewhere safe, away from this computer. Without them a
-          restore is not possible.
-        </p>
-        <div class="actions">
-          <a class="button" id="go-setup" href="#" target="_blank" rel="noopener"
-            >Continue to setup</a
-          >
-          <a class="button secondary" id="backup" href="#">Download settings backup</a>
-          <button id="quit" class="secondary" type="button">Close the installer</button>
-        </div>
+        <p class="error" id="live-error" role="alert" hidden></p>
       </section>
     </main>
     <script>
-      const TOKEN = '__TOKEN__'
       const $ = (id) => document.getElementById(id)
       const api = (path, options = {}) =>
         fetch(path, {
           ...options,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Installer-Token': TOKEN,
-            ...(options.headers || {}),
-          },
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-Installer': '1' },
         }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }))
-      const pages = ['check', 'settings', 'install', 'done']
+      const pages = ['code', 'check', 'settings', 'install', 'live']
       function show(page) {
         pages.forEach((p, i) => {
           $('p-' + p).hidden = p !== page
-          const li = $('s-' + p)
-          li.className = p === page ? 'on' : i < pages.indexOf(page) ? 'done' : ''
+          $('s-' + p).className = p === page ? 'on' : i < pages.indexOf(page) ? 'done' : ''
         })
       }
-      const row = (ok, title, detail) =>
-        `<div class="check"><span class="dot ${ok === true ? 'ok' : ok === false ? 'bad' : 'wait'}" aria-hidden="true">${ok === true ? '✓' : ok === false ? '!' : '…'}</span><div><b>${title}</b><br><span class="muted">${detail}</span></div></div>`
+      const mark = (s) =>
+        s === true || s === 'done'
+          ? ['ok', '✓']
+          : s === false || s === 'failed'
+            ? ['bad', '!']
+            : s === 'running'
+              ? ['run', '…']
+              : ['wait', '…']
+      const row = (state, title, detail = '') => {
+        const [cls, sym] = mark(state)
+        return `<div class="check"><span class="dot ${cls}" aria-hidden="true">${sym}</span><div><b>${title}</b>${detail ? `<br><span class="muted">${detail}</span>` : ''}</div></div>`
+      }
 
       let state
       async function refresh() {
-        state = (await api('/api/state')).body
-        $('release').textContent = `Installs WEEHS ${state.release.version}`
+        const res = await api('/api/state')
+        if (res.status === 401) return null
+        state = res.body
+        $('release').textContent = `WEEHS ${state.release.version}, on your company’s server`
         if (!$('dir').value) $('dir').value = state.dir
+        if (!$('domain').value) $('domain').value = state.addressHint
         return state
       }
 
+      $('claim').onclick = async () => {
+        $('code-error').hidden = true
+        const res = await api('/api/claim', {
+          method: 'POST',
+          body: JSON.stringify({ code: $('code').value }),
+        })
+        if (res.status !== 200) {
+          $('code-error').textContent = res.body.error || 'That did not work.'
+          $('code-error').hidden = false
+          return
+        }
+        show('check')
+        runChecks()
+      }
+      $('code').addEventListener('keydown', (e) => e.key === 'Enter' && $('claim').click())
+
       async function runChecks() {
         $('checks').innerHTML = '<p class="muted">Checking…</p>'
-        const { checks, installed } = await refresh()
-        const get =
-          {
-            win32: 'https://docs.docker.com/desktop/setup/install/windows-install/',
-            darwin: 'https://docs.docker.com/desktop/setup/install/mac-install/',
-          }[checks.os] || 'https://docs.docker.com/engine/install/'
+        const { checks } = await refresh()
         const dockerOk = Boolean(checks.docker)
-        const portsOk = checks.ports[80] && checks.ports[443]
         $('checks').innerHTML =
           row(
             dockerOk,
             dockerOk
               ? `Docker ${checks.docker} is running`
               : checks.dockerProblem === 'missing'
-                ? 'Docker is not installed'
-                : 'Docker is not running',
+                ? 'Docker is not installed on the server'
+                : 'Docker is not running on the server',
             dockerOk
               ? 'WEEHS runs in it.'
-              : checks.dockerProblem === 'missing'
-                ? `Install Docker, then press Check again: <a href="${get}" target="_blank" rel="noopener">get Docker</a>.`
-                : 'Start Docker (Docker Desktop: open it from the Start menu or Applications), then press Check again.'
+              : 'Install or start Docker on the server (Docker Desktop, or Docker Engine on Linux), then press Check again.'
           ) +
           row(
             dockerOk ? Boolean(checks.compose) : null,
@@ -418,31 +431,21 @@
               : 'Comes with Docker Desktop; on Linux install the docker-compose-plugin package.'
           ) +
           row(
-            portsOk,
-            portsOk ? 'Web ports 80 and 443 are free' : 'Another program is using port 80 or 443',
-            portsOk
-              ? 'WEEHS answers on them, with HTTPS.'
-              : 'Stop the other web server on this computer (IIS, Apache, nginx…), then press Check again.'
-          ) +
-          (installed
-            ? row(
-                true,
-                'WEEHS is already installed here',
-                `At https://${installed.domain}. Continuing starts it again and keeps its settings.`
-              )
-            : '')
-        $('to-settings').disabled = !(dockerOk && checks.compose && portsOk)
-        $('to-settings').textContent = installed ? 'Start WEEHS again' : 'Continue'
+            checks.port443,
+            checks.port443
+              ? 'The HTTPS port (443) is free'
+              : 'Another program is using the HTTPS port (443)',
+            checks.port443
+              ? 'WEEHS will answer on it.'
+              : 'Stop the other web server on the server, then press Check again.'
+          )
+        $('to-settings').disabled = !(dockerOk && checks.compose && checks.port443)
       }
-
       $('recheck').onclick = runChecks
-      $('to-settings').onclick = () =>
-        state.installed ? startInstall() : (show('settings'), $('domain').focus())
+      $('to-settings').onclick = () => (show('settings'), $('domain').focus())
       $('back-check').onclick = () => show('check')
-      $('install').onclick = startInstall
-      $('retry').onclick = () => show(state.installed ? 'check' : 'settings')
 
-      async function startInstall() {
+      $('prepare').onclick = async () => {
         $('settings-error').hidden = true
         const mail = $('smtpHost').value.trim()
           ? {
@@ -453,7 +456,7 @@
               from: $('mailFrom').value.trim(),
             }
           : {}
-        const res = await api('/api/install', {
+        const res = await api('/api/prepare', {
           method: 'POST',
           body: JSON.stringify({ domain: $('domain').value, dir: $('dir').value, mail }),
         })
@@ -463,53 +466,75 @@
           return
         }
         show('install')
-        $('install-error').hidden = true
-        $('retry-actions').hidden = true
         poll()
       }
 
-      async function poll() {
-        const { job, installed } = await refresh()
-        $('progress').innerHTML = job.steps
-          .map(
-            (s) =>
-              `<div class="check"><span class="dot ${s.status === 'done' ? 'ok' : s.status === 'failed' ? 'bad' : 'run'}" aria-hidden="true">${s.status === 'done' ? '✓' : s.status === 'failed' ? '!' : '…'}</span><div><b>${s.name}</b></div></div>`
-          )
-          .join('')
+      function drawProgress(job) {
+        $('progress').innerHTML = job.steps.map((s) => row(s.status, s.name)).join('')
         $('log').textContent = job.log.join('\n')
         $('log').scrollTop = $('log').scrollHeight
-        if (job.state === 'running' || job.state === 'idle') return setTimeout(poll, 1000)
+      }
+
+      async function poll() {
+        const { job, settings } = await refresh()
+        drawProgress(job)
+        if (job.state === 'running') return setTimeout(poll, 1000)
         if (job.state === 'failed') {
           $('install-error').textContent = job.error
           $('install-error').hidden = false
-          $('retry-actions').hidden = false
           return
         }
-        show('done')
-        $('done-address').textContent = `https://${installed.domain}`
-        $('setup-code').value = installed.setupCode
-        $('go-setup').href = `https://${installed.domain}/setup`
-        $('backup').href = `/api/backup?t=${TOKEN}`
+        $('install-note').hidden = true
+        $('ready').hidden = false
+        $('ready-address').textContent = `https://${settings.domain}`
       }
+      // Going live closes this installer, so the backup comes first.
+      $('backup').addEventListener('click', () =>
+        setTimeout(() => ($('finish').disabled = false), 800)
+      )
 
-      $('copy').onclick = async () => {
-        $('setup-code').select()
-        try {
-          await navigator.clipboard.writeText($('setup-code').value)
-        } catch {
-          document.execCommand('copy')
+      $('finish').onclick = async () => {
+        const { settings } = state
+        const res = await api('/api/finish', { method: 'POST' })
+        if (res.status !== 200) {
+          $('install-error').textContent = res.body.error || 'That did not work.'
+          $('install-error').hidden = false
+          return
         }
-        $('copy').textContent = 'Copied'
-        setTimeout(() => ($('copy').textContent = 'Copy'), 2000)
-      }
-      $('quit').onclick = async () => {
-        await api('/api/quit', { method: 'POST' })
-        document.querySelector('main').innerHTML =
-          '<section class="card"><h1>The installer is closed</h1><p class="muted">You can close this tab. WEEHS keeps running.</p></section>'
+        show('live')
+        $('live-address').textContent = res.body.https
+        const until = Date.now() + 4 * 60 * 1000
+        // The setup code rides in the #fragment: browsers never send it to the
+        // server, so it reaches no log and no proxy.
+        const next = `${res.body.https}/setup#code=${encodeURIComponent(settings.setupCode)}`
+        while (Date.now() < until) {
+          await new Promise((r) => setTimeout(r, 2500))
+          try {
+            // Answers once WEEHS has the address with HTTPS. no-cors: the
+            // answer is not read, only that one came.
+            await fetch(`${res.body.https}/health`, { mode: 'no-cors', cache: 'no-store' })
+            location.href = next
+            return
+          } catch {
+            // Not yet. If the start failed, the installer is back on this
+            // address with the reason.
+            const back = await api('/api/state').catch(() => null)
+            if (back && back.status === 200 && back.body.job.state === 'failed') {
+              show('install')
+              drawProgress(back.body.job)
+              $('install-error').textContent = back.body.job.error
+              $('install-error').hidden = false
+              return
+            }
+          }
+        }
+        $('live-error').textContent =
+          `WEEHS has not answered at ${res.body.https} yet. Try opening it in a few minutes.`
+        $('live-error').hidden = false
       }
 
-      show('check')
-      runChecks()
+      show('code')
+      $('code').focus()
     </script>
   </body>
 </html>

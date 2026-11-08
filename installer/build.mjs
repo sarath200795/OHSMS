@@ -37,6 +37,7 @@ const kit = Object.fromEntries(
   ])
 )
 const ui = readFileSync(join(here, 'ui.html'), 'utf8')
+const codeUi = readFileSync(join(here, 'code.html'), 'utf8')
 
 const MODULES = ['core.cjs', 'assets.cjs', 'installer.cjs']
 const wrapped = MODULES.map(
@@ -48,6 +49,7 @@ const bundle = `'use strict'
 // Built by installer/build.mjs for WEEHS ${version}. Do not edit; edit installer/.
 const __WEEHS_KIT__ = ${JSON.stringify(kit)}
 const __WEEHS_UI__ = ${JSON.stringify(ui)}
+const __WEEHS_CODE_UI__ = ${JSON.stringify(codeUi)}
 const __WEEHS_RELEASE__ = ${JSON.stringify({ version, image })}
 const __modules = {
 ${wrapped}

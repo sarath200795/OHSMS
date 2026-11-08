@@ -91,7 +91,7 @@ export function renderSetupForm({ origin, values = {}, reason = '' }) {
 ${error}
 <form method="post" action="/setup" autocomplete="off">
 <label for="code">Setup code
-<span class="hint">CONTROL_TOKEN in this environment’s settings (your hosting dashboard, or the .env file).</span>
+<span class="hint">Filled in when you come from the WEEHS Installer. Otherwise: CONTROL_TOKEN in this environment’s settings.</span>
 <input id="code" name="code" type="password" required spellcheck="false">
 </label>
 
@@ -149,6 +149,14 @@ Entity ID / audience <span class="copy">${escapeHtml(origin)}</span></p>
 <button type="submit">Set up and go live</button>
 </form>
 <script>
+  // Arriving from the WEEHS Installer: the setup code is in the #fragment,
+  // which the browser never sends to a server. Fill it in, and take it out of
+  // the address bar and the history.
+  const fromInstaller = new URLSearchParams(location.hash.slice(1)).get('code')
+  if (fromInstaller) {
+    document.getElementById('code').value = fromInstaller
+    history.replaceState(null, '', location.pathname)
+  }
   // Show only the section for the chosen method. Without script both stay
   // usable: the server reads only the one chosen.
   for (const radio of document.querySelectorAll('input[name=method]')) {

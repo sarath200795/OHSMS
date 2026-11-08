@@ -11,7 +11,7 @@ const path = require('node:path')
 
 const KIT = ['compose.yaml', 'Caddyfile', 'init-db.sh', '.env.example']
 
-/* global __WEEHS_KIT__, __WEEHS_UI__, __WEEHS_RELEASE__ */
+/* global __WEEHS_KIT__, __WEEHS_UI__, __WEEHS_CODE_UI__, __WEEHS_RELEASE__ */
 
 function kitFiles() {
   if (typeof __WEEHS_KIT__ !== 'undefined') return __WEEHS_KIT__
@@ -26,6 +26,12 @@ function uiHtml() {
   return fs.readFileSync(path.join(__dirname, 'ui.html'), 'utf8')
 }
 
+/** The page on the server's own screen: the installer code. */
+function codeHtml() {
+  if (typeof __WEEHS_CODE_UI__ !== 'undefined') return __WEEHS_CODE_UI__
+  return fs.readFileSync(path.join(__dirname, 'code.html'), 'utf8')
+}
+
 /** The release this installer was built for: its version and image. */
 function releaseInfo() {
   if (typeof __WEEHS_RELEASE__ !== 'undefined') return __WEEHS_RELEASE__
@@ -35,4 +41,4 @@ function releaseInfo() {
   }
 }
 
-module.exports = { KIT, kitFiles, uiHtml, releaseInfo }
+module.exports = { KIT, kitFiles, uiHtml, codeHtml, releaseInfo }

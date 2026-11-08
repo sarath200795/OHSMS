@@ -14,25 +14,30 @@ managed database instead? Follow [`CONTROL-PLANE.md`](CONTROL-PLANE.md).
 
 ## Install without a terminal (recommended)
 
-1. Install **Docker**: Docker Desktop on Windows or macOS (an ordinary
-   installer), Docker Engine on Linux.
-2. From the release page, download the **WEEHS Installer** for your system
-   (`weehs-installer-windows-x64.exe`, `weehs-installer-macos-arm64` or
-   `weehs-installer-linux-x64`) and open it.
-3. It opens in your web browser and walks you through it:
-   - **Check this computer:** Docker is running, and web ports 80 and 443
-     are free. Anything missing is named, with where to get it.
-   - **Your address:** for example `ehs.example.com`, and optionally email.
-   - **Install:** writes the settings with new secrets, starts the app, its
-     database and HTTPS, and waits until the app answers.
-   - **Done:** shows your **setup code**, with **Download settings backup**
-     (keep it somewhere safe, away from this computer) and **Continue to
-     setup**.
-4. **Continue to setup** opens `https://ehs.example.com/setup`: step 4 below.
+Before you start: point your address (for example `ehs.example.com`) at the
+server with a DNS record, and let web traffic (ports 80 and 443) reach it.
 
-Opening the installer again later starts WEEHS again with the same
-settings; it never replaces the secrets of an existing install. It accepts
-connections from this computer only, and only from the page it opened.
+1. On the server, install **Docker**: Docker Desktop on Windows or macOS (an
+   ordinary installer), Docker Engine on Linux.
+2. From the release page, download the **WEEHS Installer** for the server
+   (`weehs-installer-windows-x64.exe`, `weehs-installer-macos-arm64` or
+   `weehs-installer-linux-x64`) and open it. The server's screen shows a
+   one-time **installer code**.
+3. On any computer, open `http://ehs.example.com`. The installer answers at
+   your address:
+   - **Installer code:** the one on the server's screen. Ten wrong codes lock
+     it for fifteen minutes.
+   - **Check the server:** Docker is running and the HTTPS port is free.
+   - **Your address:** filled in from the one you opened; email optional.
+   - **Install:** writes the settings with new secrets on the server and
+     prepares WEEHS. Then **Download settings backup** (keep it somewhere
+     safe, away from the server) and **Switch to HTTPS and finish**.
+4. The installer hands the address to WEEHS, which takes it with HTTPS, and
+   your browser lands on `https://ehs.example.com/setup` with the setup code
+   already filled in: step 4 below.
+
+Opening the installer again later starts WEEHS again with the same settings;
+it never replaces the secrets of an existing install.
 
 The installer is not code-signed yet, so Windows SmartScreen and macOS
 Gatekeeper ask for confirmation the first time.

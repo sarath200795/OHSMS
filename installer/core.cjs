@@ -80,15 +80,73 @@ function sameSecret(a, b) {
   return x.length > 0 && x.length === y.length && timingSafeEqual(x, y)
 }
 
-/**
- * The installer listens on loopback, but a web page in the same browser can
- * still send requests to it, and a DNS name can be pointed at 127.0.0.1. So a
- * request must name this exact address in Host (no rebinding) and carry the
- * one-time token the installer printed in its own URL (no cross-site driving:
- * a custom header cannot be set by a form, and the token is unguessable).
- */
-function allowedRequest({ host, token, expectedHost, expectedToken }) {
-  return String(host || '') === expectedHost && sameSecret(token, expectedToken)
+// ── Who may drive it ────────────────────────────────────────────────────────
+// The installer answers at the company's own address, so until WEEHS is
+// installed anyone who can reach that address can reach it. A visitor must
+// first enter the one-time installer code shown on the server's own screen;
+// that sets a session cookie, and every action needs the cookie plus a header
+// a cross-site form cannot send.
+
+// No 0/O, 1/I/L: the code is read off one screen and typed on another.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+
+/** XXXX-XXXX, about 39 bits; with the lockout below, not guessable. */
+function makeInstallerCode(random = randomBytes) {
+  const bytes = random(8)
+  let out = ''
+  for (let i = 0; i < 8; i += 1) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length]
+  return `${out.slice(0, 4)}-${out.slice(4)}`
 }
 
-module.exports = { validDomain, safeValue, buildEnv, readEnv, sameSecret, allowedRequest }
+/** What a person typed, as the code: case, spaces and the dash forgiven. */
+function normalizeCode(value) {
+  const raw = String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+  return raw.length === 8 ? `${raw.slice(0, 4)}-${raw.slice(4)}` : ''
+}
+
+function cookieValue(header, name) {
+  for (const part of String(header || '').split(';')) {
+    const [k, ...v] = part.trim().split('=')
+    if (k === name) return v.join('=')
+  }
+  return ''
+}
+
+/**
+ * Wrong codes, counted for the whole installer rather than per visitor: an
+ * attacker controls their own address, not the counter. Ten in fifteen
+ * minutes and it stops checking until the window passes.
+ */
+function createLockout({ max = 10, windowMs = 15 * 60 * 1000, now = Date.now } = {}) {
+  let failures = []
+  return {
+    locked() {
+      const t = now()
+      failures = failures.filter((f) => t - f < windowMs)
+      return failures.length >= max
+    },
+    fail() {
+      failures.push(now())
+    },
+  }
+}
+
+/** An action request: the session cookie, and the header forms cannot set. */
+function actionAllowed({ cookie, header, session }) {
+  return header === '1' && sameSecret(cookieValue(cookie, 'weehs_installer'), session)
+}
+
+module.exports = {
+  validDomain,
+  safeValue,
+  buildEnv,
+  readEnv,
+  sameSecret,
+  makeInstallerCode,
+  normalizeCode,
+  cookieValue,
+  createLockout,
+  actionAllowed,
+}

@@ -144,8 +144,9 @@ jobs:
             echo "version starts. Keep \`STATE_KEY\` and \`SESSION_SECRET\` unchanged. Full"
             echo "steps: [docs/RELEASES.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/RELEASES.md)."
             echo
-            echo "Install without a terminal: download the WEEHS Installer for your system below"
-            echo "(\`weehs-installer-windows-x64.exe\`, \`-macos-arm64\` or \`-linux-x64\`) and open it."
+            echo "Install without a terminal: download the WEEHS Installer for your server below"
+            echo "(\`weehs-installer-windows-x64.exe\`, \`-macos-arm64\` or \`-linux-x64\`), open it on the"
+            echo "server, then open your address in a browser and enter the code it shows."
             echo
             echo "Self-hosting on your own server: \`weehs-$VERSION-selfhost.tar.gz\` below,"
             echo "with [docs/SELF-HOSTING.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/SELF-HOSTING.md)."

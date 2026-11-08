@@ -3,7 +3,15 @@ import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 
 const require = createRequire(import.meta.url)
-const { validDomain, buildEnv, readEnv, allowedRequest } = require('../../../installer/core.cjs')
+const {
+  validDomain,
+  buildEnv,
+  readEnv,
+  makeInstallerCode,
+  normalizeCode,
+  createLockout,
+  actionAllowed,
+} = require('../../../installer/core.cjs')
 const example = readFileSync(new URL('../../../selfhost/.env.example', import.meta.url), 'utf8')
 
 describe('WEEHS Installer: the settings it writes', () => {
@@ -62,19 +70,42 @@ describe('WEEHS Installer: the settings it writes', () => {
 })
 
 describe('WEEHS Installer: who may drive it', () => {
-  const ok = {
-    host: '127.0.0.1:47100',
-    token: 'a'.repeat(48),
-    expectedHost: '127.0.0.1:47100',
-    expectedToken: 'a'.repeat(48),
-  }
-  it('answers its own page, with its own token', () => {
-    expect(allowedRequest(ok)).toBe(true)
+  it('makes a code that is easy to read off one screen and type on another', () => {
+    const code = makeInstallerCode()
+    expect(code).toMatch(/^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/)
+    expect(makeInstallerCode()).not.toBe(code)
+    expect(normalizeCode(` ${code.toLowerCase().replace('-', ' ')} `)).toBe(code)
+    expect(normalizeCode('ABC')).toBe('')
   })
-  it('refuses another site’s request, a rebound host name, and a missing token', () => {
-    expect(allowedRequest({ ...ok, token: 'b'.repeat(48) })).toBe(false)
-    expect(allowedRequest({ ...ok, token: '' })).toBe(false)
-    expect(allowedRequest({ ...ok, host: 'evil.test:47100' })).toBe(false)
-    expect(allowedRequest({ ...ok, host: 'localhost:47100' })).toBe(false)
+
+  it('never puts the code in the page visitors to the address see', () => {
+    // installer.cjs fills __CODE__ in both pages; only the server's own screen
+    // may carry it.
+    const visitor = readFileSync(new URL('../../../installer/ui.html', import.meta.url), 'utf8')
+    const server = readFileSync(new URL('../../../installer/code.html', import.meta.url), 'utf8')
+    expect(visitor).not.toContain('__CODE__')
+    expect(server).toContain('__CODE__')
+  })
+
+  it('locks after ten wrong codes, and opens again when the window passes', () => {
+    let t = 0
+    const lockout = createLockout({ now: () => t })
+    for (let i = 0; i < 9; i += 1) lockout.fail()
+    expect(lockout.locked()).toBe(false)
+    lockout.fail()
+    expect(lockout.locked()).toBe(true)
+    t = 15 * 60 * 1000 + 1
+    expect(lockout.locked()).toBe(false)
+  })
+
+  it('acts only with the session cookie and the header a form cannot send', () => {
+    const session = 'a'.repeat(48)
+    const cookie = `other=1; weehs_installer=${session}`
+    expect(actionAllowed({ cookie, header: '1', session })).toBe(true)
+    expect(actionAllowed({ cookie, header: undefined, session })).toBe(false)
+    expect(
+      actionAllowed({ cookie: 'weehs_installer=' + 'b'.repeat(48), header: '1', session })
+    ).toBe(false)
+    expect(actionAllowed({ cookie: '', header: '1', session })).toBe(false)
   })
 })
