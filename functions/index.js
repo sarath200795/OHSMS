@@ -15,7 +15,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { getStorage } from 'firebase-admin/storage'
-import { onDocumentWritten } from 'firebase-functions/v2/firestore'
+import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret, defineString } from 'firebase-functions/params'
@@ -93,6 +93,11 @@ import { deliverWeatherDigest } from './lib/weatherDigest.js'
 import { serveSiteWeather, countWeatherFetch } from './lib/siteWeatherCall.js'
 import { weatherCache } from './lib/weatherCache.js'
 import { createMailer, DEFAULT_MAIL } from './lib/mailer.js'
+import {
+  deliverProvisioningMail,
+  deliverWelcomeMail,
+  MAX_OPERATORS,
+} from './lib/registrationMail.js'
 import { createHmac } from 'node:crypto'
 import { verifySignature, handshakeChallenge, isRealSecret } from './lib/whatsapp/signature.js'
 import { extractMessages } from './lib/whatsapp/parse.js'
@@ -2668,6 +2673,81 @@ function lifecycleTrigger(label, document, run) {
     withMailer(label, (mailer) => run(writtenArgs(event, mailer)))
   )
 }
+
+// ── Registration mail ───────────────────────────────────────────────────────
+// Nothing was mailed when an organization registered. See
+// functions/lib/registrationMail.js for why the own-database acknowledgement
+// is throttled and the welcome is not.
+
+/** Platform operators' mailboxes: the grant's email, else their Auth address. */
+async function platformOperators() {
+  const snap = await getFirestore().collection('platformAdmins').limit(MAX_OPERATORS).get()
+  const out = []
+  for (const row of snap.docs) {
+    let email = typeof row.data()?.email === 'string' ? row.data().email : ''
+    if (!email) {
+      try {
+        email = (await getAuth().getUser(row.id)).email || ''
+      } catch {
+        email = ''
+      }
+    }
+    if (email) out.push({ uid: row.id, email })
+  }
+  return out
+}
+
+export const notifyProvisioningRequested = onDocumentCreated(
+  { document: 'provisioningRequests/{requestId}', region: REGION, secrets: [SMTP_PASS] },
+  (event) =>
+    withMailer('registration', async (mailer) => {
+      let operators = []
+      try {
+        operators = await platformOperators()
+      } catch (err) {
+        // The founder's acknowledgement does not wait on the operator list.
+        logger.error('platform operators could not be listed', { error: err?.message })
+      }
+      await deliverProvisioningMail({
+        db: getFirestore(),
+        requestId: event.params.requestId,
+        request: event.data?.data() || null,
+        operators,
+        mailer,
+        logger,
+      })
+    })
+)
+
+export const notifyOrganizationCreated = onDocumentCreated(
+  { document: 'organizations/{orgId}', region: REGION, secrets: [SMTP_PASS] },
+  (event) =>
+    withMailer('welcome', async (mailer) => {
+      const org = event.data?.data() || null
+      const uid = typeof org?.createdBy === 'string' ? org.createdBy : ''
+      if (!uid || uid === 'provisioning') return
+      // The Auth record, not org.notificationEmail: the client wrote that field.
+      let founder
+      try {
+        founder = await getAuth().getUser(uid)
+      } catch (err) {
+        logger.error('welcome mail: founder not found', {
+          orgId: event.params.orgId,
+          error: err?.message,
+        })
+        return
+      }
+      await deliverWelcomeMail({
+        db: getFirestore(),
+        orgId: event.params.orgId,
+        org,
+        founderEmail: founder.email || '',
+        founderName: founder.displayName || '',
+        mailer,
+        logger,
+      })
+    })
+)
 
 export const notifyPermitLifecycle = lifecycleTrigger(
   'permit',

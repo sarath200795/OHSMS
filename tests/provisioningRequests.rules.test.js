@@ -291,3 +291,50 @@ describe('who can read and change a request', () => {
     }
   })
 })
+
+// Registration mail (functions/lib/registrationMail.js) keeps two server-only
+// stores: the send-once ledger under each request, and mailThrottle, which
+// caps mail to an address a stranger typed into the form. A client that could
+// read the ledger would learn which requests were mailed; one that could write
+// either could pre-claim a send (suppressing it) or reset a counter (lifting
+// the cap). Neither has a match block, so both rely on the default deny —
+// these hold that true if a later broad match is ever added.
+describe('registration mail stores are server-only', () => {
+  const ledger = (db) => doc(db, 'provisioningRequests', 'reqABCDEFGH12', 'notifications', 'n1')
+  const throttle = (db) => doc(db, 'mailThrottle', 'abc123')
+
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore()
+      await setDoc(ledger(db), { kind: 'provisioning.received', status: 'sent' })
+      await setDoc(throttle(db), { count: 3 })
+    })
+  })
+
+  for (const [who, db] of [
+    ['anonymous', () => anon()],
+    ['a tenant admin', () => as('admin')],
+    ['a platform operator', () => as('ops')],
+  ]) {
+    it(`refuses ${who} reading, pre-claiming or deleting a send`, async () => {
+      await assertFails(getDoc(ledger(db())))
+      await assertFails(
+        getDocs(collection(db(), 'provisioningRequests', 'reqABCDEFGH12', 'notifications'))
+      )
+      await assertFails(
+        setDoc(doc(db(), 'provisioningRequests', 'reqABCDEFGH12', 'notifications', 'n2'), {
+          status: 'claimed',
+        })
+      )
+      await assertFails(deleteDoc(ledger(db())))
+    })
+
+    it(`refuses ${who} reading or resetting the mail throttle`, async () => {
+      await assertFails(getDoc(throttle(db())))
+      await assertFails(setDoc(throttle(db()), { count: 0 }))
+      await assertFails(updateDoc(throttle(db()), { count: 0 }))
+      await assertFails(deleteDoc(throttle(db())))
+      await assertFails(setDoc(doc(db(), 'mailThrottle', 'fresh'), { count: 0 }))
+    })
+  }
+})
