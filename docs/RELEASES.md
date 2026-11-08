@@ -77,10 +77,11 @@ the published image instead of building one.
 1. Read the release notes for operator actions.
 2. Back up the database.
 3. Deploy the new image with the **same** environment variables and secrets.
-   On Cloud Run:
+   On Cloud Run, which pulls only from Artifact Registry, copy the image in
+   first (`CONTROL-PLANE.md`, step 5), then:
 
 ```bash
-gcloud run deploy ehs-COMPANY --image=ghcr.io/OWNER/weehs-dedicated@sha256:DIGEST --region=REGION
+gcloud run deploy ehs-COMPANY --image=REGION-docker.pkg.dev/PROJECT/ehs/weehs-dedicated:VERSION --region=REGION
 ```
 
 Elsewhere: replace the image tag in your Compose file or orchestrator and
