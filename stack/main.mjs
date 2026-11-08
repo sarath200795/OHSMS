@@ -109,6 +109,7 @@ const { server } = await createDedicatedApp({
   dataKeyMaster,
   mail,
   staticDir: env.STATIC_DIR || new URL('./public', import.meta.url).pathname,
+  oidcAcceptUnverifiedEmail: env.OIDC_ACCEPT_UNVERIFIED_EMAIL === 'true',
 })
 
 const port = Number(env.PORT || 8080)

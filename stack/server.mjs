@@ -147,6 +147,9 @@ export function createOwnStackServer({
   // (stack/app.mjs does, always): with it on, anyone who typed an invited
   // founder's email would be signed in as them.
   demoIssuer = true,
+  // Accept an OIDC sign-in whose userinfo has no email_verified claim
+  // (stack/oidc.mjs explains when that is reasonable).
+  oidcAcceptUnverifiedEmail = false,
 }) {
   const server = createServer(async (req, res) => {
     try {
@@ -432,6 +435,7 @@ export function createOwnStackServer({
       code,
       redirectUri: `${origin}/auth/callback`,
       verifier: pending.verifier,
+      acceptUnverifiedEmail: oidcAcceptUnverifiedEmail,
     })
     if (!identity.ok) {
       send(
@@ -639,7 +643,7 @@ export function createOwnStackServer({
       send(res, 401, { code: 'unauthenticated', message: 'unknown token' })
       return
     }
-    send(res, 200, { sub: user.sub, email: user.email, name: user.email })
+    send(res, 200, { sub: user.sub, email: user.email, email_verified: true, name: user.email })
   }
 
   function operator(req) {

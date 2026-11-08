@@ -10,7 +10,7 @@ import { createPostgresAdapter } from './adapters/postgres'
 import { createOwnStackServer, MAX_BODY_BYTES } from '../../../stack/server.mjs'
 import { identityFromSupabase } from '../../../stack/supabaseAuth.mjs'
 import { samlClient, identityFromSaml } from '../../../stack/saml.mjs'
-import { endpointsFor } from '../../../stack/oidc.mjs'
+import { endpointsFor, identityFromCode } from '../../../stack/oidc.mjs'
 import { makeIdpKeys, readAuthnRequest, signedResponse } from '../../../e2e/support/samlIdp.mjs'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync } from 'node:fs'
@@ -794,5 +794,68 @@ describe('company OIDC through discovery', () => {
 describe('http server helper import', () => {
   it('does not listen during import', () => {
     expect(typeof createServer).toBe('function')
+  })
+})
+
+describe('what an OIDC provider has to vouch for', () => {
+  const calls = []
+  const stub =
+    (routes) =>
+    async (url, init = {}) => {
+      calls.push({ url: String(url), init })
+      const body = routes[String(url)]
+      return { ok: body !== undefined, status: body ? 200 : 404, json: async () => body }
+    }
+  const exchange = (userinfo, acceptUnverifiedEmail = false) =>
+    identityFromCode({
+      tokenEndpoint: 'https://idp.test/token',
+      userinfoEndpoint: 'https://idp.test/userinfo',
+      clientId: 'c',
+      code: 'x',
+      redirectUri: 'https://ehs.test/auth/callback',
+      verifier: 'v',
+      acceptUnverifiedEmail,
+      fetchImpl: stub({
+        'https://idp.test/token': { access_token: 'at' },
+        'https://idp.test/userinfo': userinfo,
+      }),
+    })
+
+  it('refuses a userinfo with no email_verified unless the operator accepts that', async () => {
+    const user = { sub: 'u1', email: 'asha@northwind.test' }
+    expect(await exchange(user)).toEqual({ ok: false, reason: 'email-unverified' })
+    expect((await exchange(user, true)).ok).toBe(true)
+    expect(await exchange({ ...user, email_verified: false }, true)).toEqual({
+      ok: false,
+      reason: 'email-unverified',
+    })
+    expect((await exchange({ ...user, email_verified: true })).ok).toBe(true)
+  })
+
+  it('follows no redirect from the provider', async () => {
+    calls.length = 0
+    await exchange({ sub: 'u1', email: 'a@b.test', email_verified: true })
+    expect(calls).toHaveLength(2)
+    for (const call of calls) expect(call.init.redirect).toBe('error')
+  })
+
+  it('compares the issuer exactly, trailing slash included', async () => {
+    const doc = (issuer) => ({
+      issuer,
+      authorization_endpoint: 'https://idp.test/a',
+      token_endpoint: 'https://idp.test/t',
+      userinfo_endpoint: 'https://idp.test/u',
+    })
+    const where = 'https://idp.test/tenant/.well-known/openid-configuration'
+    await expect(
+      endpointsFor('https://idp.test/tenant', {
+        fetchImpl: stub({ [where]: doc('https://idp.test/tenant/') }),
+      })
+    ).rejects.toThrow(/another issuer/)
+    await expect(
+      endpointsFor('https://idp.test/tenant/', {
+        fetchImpl: stub({ [where]: doc('https://idp.test/tenant/') }),
+      })
+    ).resolves.toMatchObject({ tokenEndpoint: 'https://idp.test/t' })
   })
 })

@@ -323,11 +323,14 @@ unchanged across deploys.
 
 - **OIDC providers must vouch for the email.** The host reads the provider's
   discovery document, so Okta, Microsoft Entra, Google, Keycloak and others
-  work. Invites are matched by email, so a sign-in whose provider marks the
-  address unverified (`email_verified: false`) is refused. With Microsoft
-  Entra, register the application as **single-tenant** (your organization
-  only): a multi-tenant registration admits accounts from other tenants whose
-  email address nobody verified.
+  work. Invites are matched by email, so a sign-in is refused unless the
+  provider says the address is verified (`email_verified: true`). Microsoft
+  Entra does not send that claim at all: register the application as
+  **single-tenant** (your organization only), so every `email` it sends is one
+  your administrators set, and deploy with `OIDC_ACCEPT_UNVERIFIED_EMAIL=true`.
+  Never set it for a multi-tenant registration, which admits accounts from
+  other tenants whose email address nobody verified. An explicit
+  `email_verified: false` is refused either way.
 - **"WEEHS provisions a bucket" is not served.** The presign answer points at a
   `/blob` route this host does not implement. Have the company bring a bucket
   and a presign endpoint (`docs/CUSTOM-STACK.md`, "Files").

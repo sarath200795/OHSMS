@@ -137,6 +137,7 @@ function serveFile(res, file, method) {
  * @param {string} o.dataKeyMaster
  * @param {Function|null} o.mail     ({ to, subject, text }) => { sent: boolean }
  * @param {string} [o.staticDir]     the built app; omitted means API only
+ * @param {boolean} [o.oidcAcceptUnverifiedEmail]  OIDC_ACCEPT_UNVERIFIED_EMAIL
  */
 export async function createDedicatedApp({
   db,
@@ -147,6 +148,7 @@ export async function createDedicatedApp({
   dataKeyMaster,
   mail = null,
   staticDir = '',
+  oidcAcceptUnverifiedEmail = false,
 }) {
   await applySchema(db)
   const engine = createEngine(db)
@@ -166,6 +168,7 @@ export async function createDedicatedApp({
     controlToken,
     dataKeyMaster,
     mail,
+    oidcAcceptUnverifiedEmail,
     demoIssuer: false,
     // Tell the app about a sign-in only once it is stored: if the write
     // failed, a restart would bring back the old one and the two would differ.
