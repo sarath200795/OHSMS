@@ -469,7 +469,10 @@ export function AuthProvider({ children }) {
     modulesReady,
     moduleEnabled: (key) => isModuleEnabled(moduleMap, key),
     orgId: profile?.orgId || null,
-    orgName: profile?.orgName || '',
+    // A shared-site registration copies the name onto the profile; a
+    // dedicated environment's first sign-in does not, and its header read
+    // "Your organization". The organization's own document has it either way.
+    orgName: profile?.orgName || org?.name || '',
     actor: { uid: user?.uid, name: profile?.name || user?.displayName || 'Unknown' },
     registerOrganization,
     signUpMember,
