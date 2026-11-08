@@ -27,7 +27,9 @@ const WORKER = { role: 'ohsms_worker', uid: '' }
 export const INVITE_ROLES = ['admin', 'manager', 'member', 'auditor']
 export const MAX_PENDING_INVITES = 500
 
-const EMAIL = /^[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[^\s@<>()"',;:]+$/
+// A local part, then dot-separated labels that are each non-empty: the old
+// pattern took `a@b..test` and `a@.b.test`, which no mail server delivers to.
+const EMAIL = /^[^\s@<>()"',;:]+@[^\s@<>()"',;:.]+(?:\.[^\s@<>()"',;:.]+)+$/
 
 function refuse(reason) {
   return { ok: false, reason }
@@ -96,13 +98,19 @@ export async function inviteMember(
     if ((count.rows[0]?.n ?? 0) >= MAX_PENDING_INVITES) return refuse('too-many')
   }
 
-  await asWorker(
+  // The check above and this write are separate statements. If another
+  // organization invited the same address in between, the WHERE skips the
+  // update and RETURNING comes back empty: report that rather than claim an
+  // invite this admin does not hold.
+  const written = await asWorker(
     db,
     `INSERT INTO invites (email, org_id, role, name) VALUES ($1, $2, $3, $4)
      ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, name = EXCLUDED.name
-     WHERE invites.org_id = EXCLUDED.org_id`,
+     WHERE invites.org_id = EXCLUDED.org_id
+     RETURNING email`,
     [address, admin.orgId, role, label]
   )
+  if (!written.rows.length) return refuse('taken')
 
   let emailed = false
   if (typeof mail === 'function') {
@@ -124,7 +132,7 @@ export async function inviteMember(
   return { ok: true, email: address, role, emailed }
 }
 
-/** The caller's organization's pending invites, newest first by address. */
+/** The caller's organization's pending invites, in address order. */
 export async function listInvites(engine, db, { uid }) {
   const admin = await adminOf(engine, uid)
   if (!admin) return refuse('not-admin')

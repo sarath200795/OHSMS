@@ -94,6 +94,21 @@ export async function fulfillRequest({
   ) {
     return { ok: false, reason: 'saml' }
   }
+  // The same for the other two: the host adopts the issuer from the request
+  // and the key from this handoff, and going live without them left a sign-in
+  // page that could only ever answer "not configured".
+  if (
+    request.authMethod === 'supabase' &&
+    !(present(request.authIssuer) && present(secret.supabaseAnonKey))
+  ) {
+    return { ok: false, reason: 'supabase' }
+  }
+  if (
+    request.authMethod === 'oidc' &&
+    !(present(request.authIssuer) && present(request.authClientId))
+  ) {
+    return { ok: false, reason: 'oidc' }
+  }
   if (
     (request.mode === 'bring' || secret.databaseUrl) &&
     request.engine === 'postgres' &&

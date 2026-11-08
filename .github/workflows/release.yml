@@ -31,6 +31,10 @@ jobs:
         with:
           # Full history: the tag must be shown to be on main (below).
           fetch-depth: 0
+          # Nothing here pushes to git, and this job runs npm install scripts
+          # and a Docker build with a write token in scope. Do not leave a
+          # token in .git/config for them to read.
+          persist-credentials: false
 
       # A tag can point at any commit, including one that never entered main
       # or ran CI (deploy.yml explains this for production). A release is
@@ -56,13 +60,20 @@ jobs:
         run: |
           npm run lint
           npm test
+      # The image carries functions/lib (stack/ imports its policy helpers),
+      # and the root suite does not reach functions/. CI's functions job, here.
+      - name: Functions tests
+        working-directory: functions
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
 
       - name: Names
         id: names
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           # It becomes an image tag and file names: a version, nothing else.
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::$GITHUB_REF_NAME is not a version tag (vMAJOR.MINOR.PATCH)."
             exit 1
           fi
@@ -148,6 +159,11 @@ jobs:
           # ago — keep its file, replace its notes, and add ours.
           if ! gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
               --title "$GITHUB_REF_NAME" --notes-file notes.md --generate-notes "${FILES[@]}"; then
-            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+            # Replace the notes only if they are not already ours: on a re-run
+            # they may carry the operator notes added by hand (docs/RELEASES.md
+            # step 4), and those are not to be overwritten.
+            if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body | grep -q '^## Install or upgrade'; then
+              gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+            fi
             gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${FILES[@]}"
           fi

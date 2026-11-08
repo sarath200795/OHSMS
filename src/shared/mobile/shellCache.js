@@ -59,6 +59,10 @@ export function shellCacheDecision(rawUrl, { method = 'GET', origin = '' } = {})
   if (url.pathname.startsWith('/__/')) return 'pass'
   // The uptime probe. A cached 200 is a lie about a deploy that is down.
   if (url.pathname === '/health.json') return 'pass'
+  // A dedicated environment's settings (stack/app.mjs), written when it goes
+  // live. Kept as an asset, the phone that opened the app before the handoff
+  // would keep "Not set up yet" and the old sign-in method indefinitely.
+  if (url.pathname === '/runtime-config.js') return 'pass'
   // Legal pages are static documents. The navigate fallback would serve the
   // app shell, and a crawler or a signed-out visitor would not see the policy.
   if (
