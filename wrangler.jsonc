@@ -1,0 +1,22 @@
+// Cloudflare Workers static-assets deploy of the SPA. The backend stays on
+// Firebase: the browser still talks to Firestore, Auth, Storage and Functions
+// directly, and firestore.rules is still the enforcement.
+//
+// This file exists so `wrangler deploy` does not run its framework
+// auto-configuration. Without it, wrangler tries to parse and rewrite
+// vite.config.js to add its own plugin, and the deploy failed with
+// "Error parsing file: vite.config.js". An assets-only Worker needs no plugin:
+// the build is the plain `vite build` output in dist/.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Must match the Worker's name in the Cloudflare dashboard.
+  "name": "ohsms",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    "directory": "./dist",
+    // Every unknown path serves index.html, which is the "**" rewrite in
+    // firebase.json. /privacy and /terms resolve to their .html files through
+    // the default html_handling, so they need no rule of their own.
+    "not_found_handling": "single-page-application"
+  }
+}
