@@ -180,6 +180,7 @@ export default function Signup() {
           <Input
             id="org"
             required
+            maxLength={120}
             value={form.orgName}
             onChange={(e) => {
               setOrg(null)
@@ -195,6 +196,7 @@ export default function Signup() {
               <Input
                 id="name"
                 required
+                maxLength={120}
                 value={form.name}
                 onChange={set('name')}
                 autoComplete="name"
@@ -219,6 +221,7 @@ export default function Signup() {
                 id="email"
                 type="email"
                 required
+                maxLength={200}
                 value={form.email}
                 onChange={set('email')}
                 autoComplete="email"

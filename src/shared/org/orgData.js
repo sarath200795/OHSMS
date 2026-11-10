@@ -29,6 +29,17 @@ import { AUDIT } from '../audit/audit'
 import { createSharedSubscription } from './sharedSubscription'
 import { notifySiteCreated } from './siteHooks'
 import { canonicalFacility } from '../weather/activityPrecautions'
+import { TEXT, tooLong } from '../validate/textCap'
+
+function assertSignupText(fields) {
+  const hit =
+    tooLong(fields.orgName, TEXT.orgName, 'Organization name') ||
+    tooLong(fields.address, TEXT.address, 'Address') ||
+    tooLong(fields.name, TEXT.name, 'Name') ||
+    tooLong(fields.email, TEXT.email, 'Email') ||
+    tooLong(fields.department, TEXT.name, 'Department')
+  if (hit) throw new Error(hit)
+}
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 export const orgRef = (orgId) => doc(db, 'organizations', orgId)
@@ -111,6 +122,7 @@ export function subscribeAuditLogs(orgId, cb, max = 300) {
 
 /** Create an org + its first admin user + public name index, atomically. */
 export async function createOrganization({ orgName, address, uid, name, email }) {
+  assertSignupText({ orgName, address, name, email })
   const org = doc(collection(db, 'organizations'))
   const batch = writeBatch(db)
   batch.set(org, {
@@ -202,6 +214,7 @@ export async function listOrganizations() {
  * real department afterwards, the same way they assign site access.
  */
 export async function createPendingMember({ uid, name, email, orgId, orgName, department }) {
+  assertSignupText({ orgName, name, email, department })
   await setDoc(userRef(uid), {
     name,
     email,

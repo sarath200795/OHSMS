@@ -9,6 +9,7 @@ import {
 } from './constants'
 import { severityLabel, toDate } from './extinguisherLogic'
 import { tokenFromQrValue } from './qr'
+import { TEXT, overlongField } from '../../../shared/validate/textCap'
 import { DEFECT_REPOSITORY_COLUMNS } from './defectRepositoryExport'
 import { assertWorkbookSize, assertRowCount } from '../../../shared/lib/workbookGuard'
 import { parseCsvFile } from '../../../shared/lib/parseTable'
@@ -169,6 +170,22 @@ export async function parseAssetUpload(kind, file) {
     if (entity && !ENTITIES.includes(entity)) issues.push(`Entity must be one of ${ENTITIES.join(', ')}`)
     if (kind === 'fas' && data.deviceType && !FAS_DEVICE_TYPES.includes(data.deviceType)) issues.push(`Device Type must be one of ${FAS_DEVICE_TYPES.join(', ')}`)
     if (kind === 'stretcher' && data.type && !STRETCHER_TYPES.includes(data.type)) issues.push(`Type must be one of ${STRETCHER_TYPES.join(', ')}`)
+    const assetLong = overlongField(data, {
+      centerName: [TEXT.site, 'Site'],
+      region: [TEXT.short, 'Region'],
+      entity: [TEXT.short, 'Entity'],
+      location: [TEXT.location, 'Location'],
+      notes: [TEXT.job, 'Notes'],
+      assetId: [TEXT.label, 'Asset ID'],
+      deviceId: [TEXT.label, 'Device ID'],
+      brand: [TEXT.serial, 'Brand'],
+      model: [TEXT.serial, 'Model'],
+      zone: [TEXT.serial, 'Zone'],
+      amcVendor: [TEXT.label, 'AMC Vendor'],
+      deviceType: [TEXT.short, 'Device Type'],
+      type: [TEXT.short, 'Type'],
+    })
+    if (assetLong) issues.push(assetLong)
 
     if (issues.length) errors.push({ row: rowNum, data, issues })
     else valid.push(data)
@@ -241,6 +258,18 @@ export async function parseUpload(file) {
     if (!CAPACITIES.includes(data.capacity)) issues.push(`Capacity must be one of ${CAPACITIES.join(', ')}`)
     if (!ENTITIES.includes(data.entity)) issues.push(`Entity must be one of ${ENTITIES.join(', ')}`)
     if (region && !REGIONS.includes(region)) issues.push(`Region must be one of ${REGIONS.join(', ')}`)
+    const rowLong = overlongField(data, {
+      serialNo: [TEXT.serial, 'Serial No'],
+      type: [TEXT.short, 'Type'],
+      capacity: [TEXT.short, 'Capacity'],
+      entity: [TEXT.short, 'Entity'],
+      region: [TEXT.short, 'Region'],
+      centerName: [TEXT.site, 'Center Name'],
+      dateOfDeployment: [TEXT.date, 'Date of Deployment'],
+      dateOfNextRefill: [TEXT.date, 'Date of Next Refill'],
+      dateOfNextHPT: [TEXT.date, 'Date of Next HPT'],
+    })
+    if (rowLong) issues.push(rowLong)
 
     // A QR Link that cannot be turned into a token used to be dropped in
     // silence: tokenFromQrValue returns '', the upsert falls through to

@@ -140,6 +140,7 @@ export default function StepInjuryReports({
                       <input
                         className="input mt-2"
                         placeholder="First aid details (what was done)"
+                        maxLength={2000}
                         value={r.firstAidDetail || ''}
                         onChange={(e) => setReport(p, { firstAidDetail: e.target.value })}
                       />

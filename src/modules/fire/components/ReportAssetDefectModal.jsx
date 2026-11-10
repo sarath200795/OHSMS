@@ -6,6 +6,7 @@ import { toastCaught } from '../../../shared/lib/toastCaught'
 import { Modal, Spinner, Field } from './ui'
 import { ASSET_DEFECTS, OTHER_DEFECT, REPORTER_ROLES } from '../lib/constants'
 import { createAssetReport } from '../lib/firestore'
+import { REPORT_NOTE_MAX, reportNoteIssue } from '../lib/publicReport'
 
 /**
  * Report a defect against an AED, a FAS device or a stretcher from a public QR
@@ -41,6 +42,8 @@ export default function ReportAssetDefectModal({ open, onClose, asset, kind }) {
     if (!selected) return toast.error('Select what is wrong')
     if (needsNote && !note.trim()) return toast.error('Describe the problem in the note')
     if (!role) return toast.error('Select who is reporting')
+    const noteIssue = reportNoteIssue(note)
+    if (noteIssue) return toast.error(noteIssue)
     setBusy(true)
     try {
       await createAssetReport(asset.orgId, {
@@ -104,6 +107,7 @@ export default function ReportAssetDefectModal({ open, onClose, asset, kind }) {
           className="input min-h-[72px]"
           placeholder="Describe what you observed…"
           value={note}
+          maxLength={REPORT_NOTE_MAX}
           onChange={(e) => setNote(e.target.value)}
         />
       </div>
